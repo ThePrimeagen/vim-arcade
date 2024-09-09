@@ -4,19 +4,33 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
+	"os"
 	"strings"
+	"sync"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
 )
+
+var id = 0
+
+func getId() int {
+	out := id
+	id++
+	return out
+}
 
 type DummyGameServer struct {
 	done     chan struct{}
 	db       gameserverstats.GSSRetriever
 	stats    gameserverstats.GameServerConfig
 	listener net.Listener
+	logger   *slog.Logger
+    mutex sync.Mutex
 }
+
 func readLines(reader *bufio.Reader, out chan<- string) {
 	for {
 		line, err := reader.ReadString('\n')
@@ -31,9 +45,11 @@ func readLines(reader *bufio.Reader, out chan<- string) {
 func NewDummyGameServer(db gameserverstats.GSSRetriever, stats gameserverstats.GameServerConfig) *DummyGameServer {
 	db.Update(stats)
 	return &DummyGameServer{
-		stats: stats,
-		db:    db,
-		done:  make(chan struct{}),
+		logger: slog.Default().With("area", fmt.Sprintf("GameServer-%s", os.Getenv("ID"))),
+		stats:  stats,
+		db:     db,
+		done:   make(chan struct{}, 1),
+        mutex: sync.Mutex{},
 	}
 }
 
@@ -49,27 +65,36 @@ func innerListenForConnections(listener net.Listener) <-chan net.Conn {
 	return ch
 }
 
-func (g *DummyGameServer) handleConnection(ctx context.Context, conn net.Conn) {
-    _, err := conn.Write([]byte("ready"))
-    if err != nil {
-        conn.Close()
-        return
-    }
+// this function is so bad that i need to see a doctor
+// which also means i am ready to work at FAANG
+func (g *DummyGameServer) incConnections(amount int) {
+    g.mutex.Lock()
+    defer g.mutex.Unlock()
 
-	g.stats.Connections++
-	g.db.Update(g.stats)
+	g.stats.Connections += amount
+    err := g.db.Update(g.stats)
+    assert.NoError(err, "failed while writing to the database", "err", err)
+}
+
+func (g *DummyGameServer) handleConnection(ctx context.Context, conn net.Conn) {
+	_, err := conn.Write([]byte("ready"))
+	if err != nil {
+		conn.Close()
+		return
+	}
+
+    g.incConnections(1)
 
 	reader := bufio.NewReader(conn)
-	lines := make(chan string)
-
+	lines := make(chan string, 10)
 	go readLines(reader, lines)
-
-	defer func() {
-		select {
-		case <-ctx.Done():
+	go func() {
+        select {
+        case <-ctx.Done():
         case <-lines:
-		}
-		conn.Close()
+        }
+        conn.Close()
+        g.incConnections(-1)
 	}()
 }
 
@@ -83,14 +108,16 @@ func (g *DummyGameServer) Run(ctx context.Context) error {
 
     outer:
 	for {
+        g.logger.Info("waiting for connection or ctx done")
 		select {
 		case <-ctx.Done():
 			break outer
 		case c := <-ch:
+            g.logger.Info("new connection")
 			g.handleConnection(ctx, c)
 		}
 	}
-    g.done <- struct{}{}
+	g.done <- struct{}{}
 
 	return nil
 }

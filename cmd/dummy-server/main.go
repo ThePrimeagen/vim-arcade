@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"vim-arcade.theprimeagen.com/pkg/assert"
 	"vim-arcade.theprimeagen.com/pkg/ctrlc"
 	"vim-arcade.theprimeagen.com/pkg/dummy"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
@@ -47,7 +48,8 @@ func main() {
 
     // TODO make this... well better?
     // Right now we have no local vs flyio stuff... iots just me programming
-    db := gameserverstats.NewJSONMemory(os.Getenv("IN_MEMORY_JSON"))
+    db, err := gameserverstats.NewJSONMemory(os.Getenv("IN_MEMORY_JSON"))
+    assert.NoError(err, "the json database could not be created", "err", err)
     host, port := getHostAndPort()
 
     config := gameserverstats.GameServerConfig {
@@ -60,7 +62,7 @@ func main() {
     }
 
     ll.Info("creating server", "port", port, "host", host)
-    server := dummy.NewDummyGameServer(&db, config)
+    server := dummy.NewDummyGameServer(db, config)
     ctx, cancel := context.WithCancel(context.Background())
     ctrlc.HandleCtrlC(cancel)
 
