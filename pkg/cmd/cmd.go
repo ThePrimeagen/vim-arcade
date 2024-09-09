@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
@@ -114,11 +115,14 @@ func (c *Cmder) WriteLine(b []byte) error {
     return nil
 }
 
-func (c *Cmder) Run() error {
+func (c *Cmder) Run(env []string) error {
     assert.Assert(c.Out != nil, "you should never spawn a cmd without at least listening to stdout")
     assert.Assert(c.Name != "", "you need to provide a name for the program to run")
 
     c.cmd = exec.Command(c.Name, c.Args...)
+    if len(env) > 0 {
+        c.cmd.Env = append(os.Environ(), env...)
+    }
 
     stdin, err := c.cmd.StdinPipe()
     if err != nil {

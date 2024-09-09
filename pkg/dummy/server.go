@@ -1,4 +1,4 @@
-package td
+package dummy
 
 import (
 	"bufio"

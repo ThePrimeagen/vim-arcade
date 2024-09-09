@@ -8,6 +8,8 @@ import (
 	"log/slog"
 )
 
+// TODO using slog for logging
+
 var assertData map[string]any = map[string]any{}
 var writer io.Writer
 
@@ -74,7 +76,7 @@ func runAssert(msg string, args ...any) {
 	}
 }
 
-// TODO: Think about passing around a context for debugging purposes
+// TODO Think about passing around a context for debugging purposes
 func Assert(truth bool, msg string, data ...any) {
 	if !truth {
 		runAssert(msg, data...)
@@ -91,6 +93,7 @@ func NotNil(item any, msg string) {
 func Never(msg string, data ...any) {
     Assert(false, msg, data...)
 }
+
 func NoError(err error, msg string, data ...any) {
 	if err != nil {
 		slog.Error("NoError#error encountered", "error", err)

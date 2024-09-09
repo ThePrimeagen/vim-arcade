@@ -5,7 +5,16 @@ import (
 	"fmt"
 )
 
+type State int
+const (
+    GSStateInitializing State = iota
+    GSStateReady
+    GSStateClosed
+)
+
 type GameServerConfig struct {
+    State State
+
 	Id string
 
 	Connections int
@@ -24,6 +33,7 @@ func (g *GameServerConfig) Addr() string {
 
 // TODO I don't know what to call this thing...
 type GSSRetriever interface {
+    GetById(string) *GameServerConfig
     Iter() func(yield func(i int, s GameServerConfig) bool)
     Run(ctx context.Context)
     Update(stats GameServerConfig) error
