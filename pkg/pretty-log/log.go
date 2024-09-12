@@ -245,8 +245,7 @@ func WithOutputEmptyAttrs() Option {
 }
 
 func SetProgramLevelPrettyLogger() *slog.Logger {
-	// TODO configure logging
-	prettyHandler := NewHandler(&slog.HandlerOptions{
+    prettyHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level:       slog.LevelInfo,
 		AddSource:   false,
 		ReplaceAttr: nil,

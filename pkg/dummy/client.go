@@ -22,6 +22,7 @@ type DummyClient struct {
 	port   uint16
 	conn   net.Conn
 	done   chan struct{}
+	ready  chan struct{}
 }
 
 func getDummyClientLogger() *slog.Logger {
@@ -37,6 +38,7 @@ func NewDummyClientFromConnString(hostAndPort string) DummyClient {
 		port:   uint16(port),
 		logger: getDummyClientLogger(),
 		done:   make(chan struct{}, 1),
+		ready:   make(chan struct{}, 1),
 	}
 }
 
@@ -46,6 +48,7 @@ func NewDummyClient(host string, port uint16) DummyClient {
 		port:   uint16(port),
 		logger: getDummyClientLogger(),
 		done:   make(chan struct{}, 1),
+		ready:   make(chan struct{}, 1),
 	}
 }
 
@@ -79,9 +82,12 @@ func (d *DummyClient) connectToMatchMaking(ctx context.Context) hostAndPort {
 }
 
 func (d *DummyClient) Connect(ctx context.Context) error {
-    hap := d.connectToMatchMaking(ctx)
+	d.logger.Info("client connecting to match making")
+	hap := d.connectToMatchMaking(ctx)
+	d.logger.Info("client connecting to game server")
 	conn, err := net.Dial("tcp4", fmt.Sprintf("%s:%d", hap.host, hap.port))
 	assert.NoError(err, "client could not connect to the game server", "err", err)
+    d.ready<-struct{}{}
 
 	go func() {
 		data := make([]byte, 1000, 1000)
@@ -103,8 +109,12 @@ func (d *DummyClient) Connect(ctx context.Context) error {
 	return nil
 }
 
-func (d *DummyClient) Wait() {
+func (d *DummyClient) WaitForDone() {
 	<-d.done
+}
+
+func (d *DummyClient) WaitForReady() {
+	<-d.ready
 }
 
 func (d *DummyClient) Disconnect() {
