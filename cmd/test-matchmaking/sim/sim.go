@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"math"
 	"math/rand"
+	"sync"
+	"time"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
 	"vim-arcade.theprimeagen.com/pkg/dummy"
@@ -26,6 +28,7 @@ type Simulation struct {
     rand *rand.Rand
     Done bool
     logger *slog.Logger
+    mutex sync.Mutex
 }
 
 func NewSimulation(params SimulationParams) Simulation {
@@ -34,7 +37,36 @@ func NewSimulation(params SimulationParams) Simulation {
         params: params,
         connections: []*dummy.DummyClient{},
         rand: rand.New(rand.NewSource(params.Seed)),
+        mutex: sync.Mutex{},
     }
+}
+
+func (s *Simulation) push(client *dummy.DummyClient) {
+    s.mutex.Lock()
+    defer s.mutex.Unlock()
+    s.connections = append(s.connections, client)
+}
+
+func (s *Simulation) nextInt(min int, max int) int {
+    out := s.rand.Int()
+    diff := max - min
+    if diff == 0 {
+        return min
+    }
+
+    return min + out % diff
+}
+
+func (s *Simulation) removeRandom() {
+    s.mutex.Lock()
+
+    defer s.mutex.Unlock()
+    idx := s.rand.Int() % len(s.connections)
+    slog.Info("SimRound removing connection", "idx", idx)
+    s.connections[idx].Disconnect()
+    s.connections = append(s.connections[0:idx], s.connections[idx + 1:]...)
+
+    return
 }
 
 func (s *Simulation) client(ctx context.Context) *dummy.DummyClient {
@@ -44,7 +76,7 @@ func (s *Simulation) client(ctx context.Context) *dummy.DummyClient {
     assert.NoError(err, "unable to connect to client", "err", err)
     client.WaitForReady()
     slog.Info("client connected")
-    s.connections = append(s.connections, &client)
+    s.push(&client)
     return &client
 }
 
@@ -61,22 +93,35 @@ func (s *Simulation) RunSimulation(ctx context.Context) error {
         default:
         }
 
+        start := time.Now()
         current := s.params.Stats.GetConnectionCount()
-        target := int(s.rand.NormFloat64() * float64(s.params.MaxConnections))
-        diff := target - current
-        diffAbs := int(math.Abs(float64(diff)))
-        s.logger.Info("SimRound", "round", round, "current", current, "target", target, "diff", diff, "diffAbs", diffAbs)
+        adds := int(math.Abs(s.rand.NormFloat64() * float64(s.params.MaxConnections)))
+        removes := int(math.Abs(s.rand.NormFloat64() * float64(s.params.MaxConnections)))
+        s.logger.Info("SimRound", "round", round, "current", current, "adds", adds, "removes", removes)
 
-        for range diffAbs {
-            if diff > 0 {
-                s.client(ctx)
-            } else if len(s.connections) > 0 {
-                idx := s.rand.Int() % len(s.connections)
-                slog.Info("SimRound removing connection", "idx", idx)
-                s.connections[idx].Disconnect()
-                s.connections = append(s.connections[0:idx], s.connections[idx + 1:]...)
+        wait := sync.WaitGroup{}
+        wait.Add(2)
+        go func() {
+            for range adds {
+                <-time.NewTimer(time.Duration(s.nextInt(50, 800))).C
+                s.client(ctx);
             }
-        }
+            wait.Done()
+        }()
+
+        go func() {
+            for range removes {
+                if len(s.connections) == 0 {
+                    continue
+                }
+                <-time.NewTimer(time.Duration(s.nextInt(50, 800))).C
+                s.removeRandom()
+            }
+            wait.Done()
+        }()
+
+        wait.Wait();
+        s.logger.Info("SimRound finished", "time taken ms", time.Now().Sub(start).Milliseconds())
     }
 
     s.Done = true

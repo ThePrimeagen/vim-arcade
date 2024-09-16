@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"vim-arcade.theprimeagen.com/cmd/test-matchmaking/sim"
 	"vim-arcade.theprimeagen.com/pkg/assert"
@@ -62,6 +63,7 @@ func main() {
 
     fmt.Printf("[2J[1;1H\n")
     for !s.Done {
+        <-time.NewTicker(time.Millisecond * 100).C
         fmt.Printf("[;H")
         fmt.Printf("%s\n", mm.String())
     }
