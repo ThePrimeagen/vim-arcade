@@ -45,31 +45,32 @@ func (m *MatchMakingServer) handleNewConnection(ctx context.Context, conn net.Co
 		}
 	}()
 
-	gameString, err := m.Params.GameServer.GetBestServer()
+	gameId, err := m.Params.GameServer.GetBestServer()
 	if errors.Is(err, servermanagement.NoBestServer) {
 		// TODO mutex lock
 		// - great if i scale vertically the match making server
 		// TODO messaging goes way better
 		// - if i ever scale horizontally the match making..
 		// TODO When there is a server in init mode, do not create a new one
-		gameString, err = m.Params.GameServer.CreateNewServer(ctx)
+		gameId, err = m.Params.GameServer.CreateNewServer(ctx)
 		if err != nil {
 			// TODO If there are no more servers available to create (max server count)
 			// then the queue needs to begin
 			assert.Never("unimplemented")
 		}
 
-		m.logger.Info("waiting for server", "id", gameString)
-		err = m.Params.GameServer.WaitForReady(ctx, gameString)
-		m.logger.Info("server created", "id", gameString)
+		m.logger.Info("waiting for server", "id", gameId)
+		err = m.Params.GameServer.WaitForReady(ctx, gameId)
+		m.logger.Info("server created", "id", gameId)
 		assert.NoError(err, "unsure how this happened", "err", err)
 	} else if err != nil {
 		m.logger.Error("getting best server error", "error", err)
 		return
 	}
 
-	gs, err := m.Params.GameServer.GetConnectionString(gameString)
+	gs, err := m.Params.GameServer.GetConnectionString(gameId)
 	assert.NoError(err, "game server id somehow wasn't found", "err", err)
+    assert.Assert(gs != "", "game server gameString did not produce a host:port pair", "id", gameId)
 
 	// TODO probably better to just get a full server information
 	m.logger.Info("game server selected", "host:port", gs)
@@ -83,7 +84,7 @@ func innerListenForConnections(listener net.Listener) <-chan net.Conn {
 	go func() {
 		for {
 			c, err := listener.Accept()
-			assert.NoError(err, "tcp listener has failed to accept a connection", "err", err)
+			assert.NoError(err, "matchmaking was unable to accept connection", "err", err)
 			ch <- c
 		}
 	}()

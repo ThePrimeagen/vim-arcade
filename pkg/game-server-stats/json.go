@@ -100,12 +100,13 @@ func (j *JSONMemory) Run(ctx context.Context) {
     defer timer.Stop()
     outer:
     for {
+        j.logger.Warn("Run#forLoop")
         select {
         case <-timer.C:
             j.refresh()
 
         case <-ctx.Done():
-            slog.Warn("ctx done")
+            j.logger.Warn("ctx done")
             break outer
         }
     }
@@ -131,6 +132,8 @@ func (j *JSONMemory) refresh() {
         slog.Error("unable to decode json file", "error", err)
         return;
     }
+
+    j.logger.Info("refresh", "stats", data.Stats)
 
     j.mutex.Lock()
     j.stats = data.Stats

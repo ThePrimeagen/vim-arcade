@@ -60,8 +60,9 @@ func (d *DummyClient) Write(data []byte) error {
 }
 
 func (d *DummyClient) connectToMatchMaking(ctx context.Context) hostAndPort {
-	d.logger.Info("connect to matchmaking")
-	conn, err := net.Dial("tcp4", fmt.Sprintf("%s:%d", d.host, d.port))
+    connStr := fmt.Sprintf("%s:%d", d.host, d.port)
+	d.logger.Info("connect to matchmaking", "conn", connStr)
+	conn, err := net.Dial("tcp4", connStr)
 	assert.NoError(err, "could not connect to server", "error", err)
 
 	data := make([]byte, 1000, 1000)

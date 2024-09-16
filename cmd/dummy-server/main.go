@@ -21,11 +21,14 @@ func main() {
     godotenv.Load()
 
     prettylog.SetProgramLevelPrettyLogger()
+    slog.SetDefault(slog.Default().With("process", "DummyServer"))
+
     ll :=  slog.Default().With("area", "dummy-server")
+    ll.Warn("dummy-server initializing...")
 
     // TODO make this... well better?
     // Right now we have no local vs flyio stuff... iots just me programming
-    db, err := gameserverstats.NewJSONMemory(os.Getenv("IN_MEMORY_JSON"))
+    db, err := gameserverstats.NewJSONMemory("/tmp/testing.json")
     assert.NoError(err, "the json database could not be created", "err", err)
     host, port := dummy.GetHostAndPort()
 
@@ -44,6 +47,7 @@ func main() {
     ctrlc.HandleCtrlC(cancel)
 
     defer server.Close()
+    go db.Run(ctx)
     go func () {
         err := server.Run(ctx)
         if err != nil {
