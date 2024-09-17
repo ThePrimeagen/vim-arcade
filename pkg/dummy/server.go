@@ -46,8 +46,6 @@ func NewDummyGameServer(db gameserverstats.GSSRetriever, stats gameserverstats.G
     logger := slog.Default().With("area", fmt.Sprintf("GameServer-%s", os.Getenv("ID")))
     logger.Warn("new dummy game server", "ID", os.Getenv("ID"))
 
-    err := db.Update(stats)
-    assert.NoError(err, "unable to save the stats of the dummy game server", err)
 	return &DummyGameServer{
 		logger: logger,
 		stats:  stats,
@@ -107,8 +105,17 @@ func (g *DummyGameServer) Run(ctx context.Context) error {
     g.logger.Warn("dummy-server#Run started...")
 	portStr := fmt.Sprintf(":%d", g.stats.Port)
 	listener, err := net.Listen("tcp4", portStr)
-    g.logger.Warn("dummy-server#Run running...")
 
+    defer func() {
+        g.done <- struct{}{}
+        listener.Close()
+    }()
+
+    g.stats.State = gameserverstats.GSStateReady
+    err = g.db.Update(g.stats)
+    assert.NoError(err, "unable to save the stats of the dummy game server on connection", err)
+
+    g.logger.Warn("dummy-server#Run running...")
 
 	if err != nil {
 		return err
@@ -126,7 +133,10 @@ func (g *DummyGameServer) Run(ctx context.Context) error {
 			go g.handleConnection(ctx, c)
 		}
 	}
-	g.done <- struct{}{}
+
+    g.stats.State = gameserverstats.GSStateClosed
+    err = g.db.Update(g.stats)
+    assert.NoError(err, "unable to save the stats of the dummy game server on close", err)
 
 	return nil
 }

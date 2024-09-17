@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"github.com/joho/godotenv"
-	"vim-arcade.theprimeagen.com/pkg/assert"
 	"vim-arcade.theprimeagen.com/pkg/ctrlc"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
 	"vim-arcade.theprimeagen.com/pkg/matchmaking"
@@ -35,13 +34,11 @@ func main() {
         os.Exit(1)
     }
 
-    db, err := gameserverstats.NewJSONMemoryAndClear(os.Getenv("IN_MEMORY_JSON"))
-    assert.NoError(err, "the json database could not be created", "err", err)
-
+    db := gameserverstats.NewSqlite("file:///tmp/sim.db")
+    db.SetSqliteModes()
     local := servermanagement.NewLocalServers(db, servermanagement.ServerParams{
         MaxLoad: 0.9,
     })
-
     mm := matchmaking.NewMatchMakingServer(matchmaking.MatchMakingServerParams{
         Port: port,
         GameServer: &local,

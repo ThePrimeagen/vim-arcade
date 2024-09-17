@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"vim-arcade.theprimeagen.com/cmd/test-matchmaking/sim"
-	"vim-arcade.theprimeagen.com/pkg/assert"
 	"vim-arcade.theprimeagen.com/pkg/ctrlc"
 	"vim-arcade.theprimeagen.com/pkg/dummy"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
@@ -16,11 +15,14 @@ import (
 	servermanagement "vim-arcade.theprimeagen.com/pkg/server-management"
 )
 
-func createMatchMaking() (servermanagement.LocalServers, *gameserverstats.JSONMemory, *matchmaking.MatchMakingServer) {
+func createMatchMaking() (servermanagement.LocalServers, *gameserverstats.Sqlite, *matchmaking.MatchMakingServer) {
     _, port := dummy.GetHostAndPort()
 
-    db, err := gameserverstats.NewJSONMemoryAndClear("/tmp/testing.json")
-    assert.NoError(err, "the json database could not be created")
+    path := "/tmp/sim.db"
+    gameserverstats.ClearSQLiteFiles(path)
+    db := gameserverstats.NewSqlite("file:" + path)
+    db.SetSqliteModes()
+    db.CreateGameServerConfigs()
 
     local := servermanagement.NewLocalServers(db, servermanagement.ServerParams{
         MaxLoad: 0.9,

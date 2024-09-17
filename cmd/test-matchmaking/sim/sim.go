@@ -94,7 +94,7 @@ func (s *Simulation) RunSimulation(ctx context.Context) error {
         }
 
         start := time.Now()
-        current := s.params.Stats.GetConnectionCount()
+        current := s.params.Stats.GetTotalConnectionCount()
         adds := int(math.Abs(s.rand.NormFloat64() * float64(s.params.MaxConnections)))
         removes := int(math.Abs(s.rand.NormFloat64() * float64(s.params.MaxConnections)))
         s.logger.Info("SimRound", "round", round, "current", current, "adds", adds, "removes", removes)
