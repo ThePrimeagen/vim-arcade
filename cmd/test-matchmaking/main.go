@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"vim-arcade.theprimeagen.com/cmd/test-matchmaking/sim"
@@ -35,9 +37,22 @@ func createMatchMaking() (servermanagement.LocalServers, *gameserverstats.Sqlite
 }
 
 func main() {
-    prettylog.SetProgramLevelPrettyLogger()
-    slog.SetDefault(slog.Default().With("process", "sim"))
-    logger := slog.Default().With("area", "TestMatchMaking")
+    var inline bool
+    flag.BoolVar(&inline, "inline", false, "if logging and display output should both go to stdout")
+    flag.Parse()
+
+    fh := os.Stderr
+    if inline {
+        fh = os.Stdout
+    }
+
+    logger := prettylog.SetProgramLevelPrettyLogger(prettylog.PrettyLoggerParams{
+        Out: fh,
+        Level: slog.LevelDebug,
+    })
+
+    slog.SetDefault(logger.With("process", "sim"))
+    logger = slog.Default().With("area", "TestMatchMaking")
     local, db, mm := createMatchMaking()
     ctx, cancel := context.WithCancel(context.Background())
 
@@ -58,15 +73,34 @@ func main() {
         Host: "",
         Port: uint16(mm.Params.Port),
         Stats: db,
-        MaxConnections: 100,
+        MaxConnections: 10,
+        TimeToConnectionCountMS: 1500,
     })
     go s.RunSimulation(ctx)
     go local.Run(ctx)
 
-    fmt.Printf("[2J[1;1H\n")
+    if !inline {
+        fmt.Printf("[2J[1;1H\n")
+    }
+    count := 0
+    var ticker *time.Ticker
+    if inline {
+        ticker = time.NewTicker(time.Second * 2)
+    } else {
+        ticker = time.NewTicker(time.Millisecond * 100)
+    }
+
     for !s.Done {
-        <-time.NewTicker(time.Millisecond * 100).C
-        fmt.Printf("[;H")
+        <-ticker.C
+        count++
+        if !inline {
+            if count % 10 == 0 {
+                fmt.Printf("[2J[1;1H\n")
+            } else {
+                fmt.Printf("[;H")
+            }
+        }
+        fmt.Printf("%s\n", s.String())
         fmt.Printf("%s\n", mm.String())
     }
 

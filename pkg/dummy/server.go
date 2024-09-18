@@ -1,9 +1,9 @@
 package dummy
 
 import (
-	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -31,15 +31,22 @@ type DummyGameServer struct {
     mutex sync.Mutex
 }
 
-func readLines(reader *bufio.Reader, out chan<- string) {
+// this is bad...
+// i just needed something to do reads with context
+func (s *DummyGameServer) readLines(reader io.Reader, id int, out chan<- string) {
+    bytes := make([]byte, 1000, 1000)
 	for {
-		line, err := reader.ReadString('\n')
+        s.logger.Warn("readLines waiting", "conn-id", id)
+		n, err := reader.Read(bytes)
+        s.logger.Warn("readLines read", "conn-id", id, "n", n, "err", err)
 		if err != nil {
-			close(out)
-			return
+            break
 		}
-		out <- strings.TrimSpace(line)
+        out <- strings.TrimSpace(string(bytes[0:n]))
 	}
+
+    out <- ""
+    close(out)
 }
 
 func NewDummyGameServer(db gameserverstats.GSSRetriever, stats gameserverstats.GameServerConfig) *DummyGameServer {
@@ -79,6 +86,7 @@ func (g *DummyGameServer) incConnections(amount int) {
     assert.NoError(err, "failed while writing to the database", "err", err)
 }
 
+var connId = 0
 func (g *DummyGameServer) handleConnection(ctx context.Context, conn net.Conn) {
 	_, err := conn.Write([]byte("ready"))
 	if err != nil {
@@ -87,15 +95,18 @@ func (g *DummyGameServer) handleConnection(ctx context.Context, conn net.Conn) {
 	}
 
     g.incConnections(1)
+    connId++
 
-	reader := bufio.NewReader(conn)
-	lines := make(chan string, 10)
-	go readLines(reader, lines)
+	datas := make(chan string, 10)
+	go g.readLines(conn, connId, datas)
 	go func() {
         select {
         case <-ctx.Done():
-        case <-lines:
+        case <-datas:
         }
+
+        // TODO develop a connection struct that has an id
+        g.logger.Warn("closing client")
         conn.Close()
         g.incConnections(-1)
 	}()

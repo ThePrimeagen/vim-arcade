@@ -85,9 +85,11 @@ func (d *DummyClient) connectToMatchMaking(ctx context.Context) hostAndPort {
 func (d *DummyClient) Connect(ctx context.Context) error {
 	d.logger.Info("client connecting to match making")
 	hap := d.connectToMatchMaking(ctx)
-	d.logger.Info("client connecting to game server")
+	d.logger.Info("client connecting to game server", "host", d.host, "port", d.port)
 	conn, err := net.Dial("tcp4", fmt.Sprintf("%s:%d", hap.host, hap.port))
 	assert.NoError(err, "client could not connect to the game server", "err", err)
+    d.conn = conn
+	d.logger.Info("client connected to game server", "host", d.host, "port", d.port)
     d.ready<-struct{}{}
 
 	go func() {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log/slog"
+	"os"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
 	"vim-arcade.theprimeagen.com/pkg/dummy"
@@ -18,7 +19,12 @@ func main() {
 
     assert.Assert(port > 0, "expected port to be provided", "port", port)
 
-    prettylog.SetProgramLevelPrettyLogger()
+    // TODO logging customization through some sort of config/env
+    prettylog.SetProgramLevelPrettyLogger(prettylog.PrettyLoggerParams{
+        Out: os.Stderr,
+        Level: slog.LevelDebug,
+    })
+
     client := dummy.NewDummyClient("", uint16(port))
 
     err := client.Connect(context.Background())
