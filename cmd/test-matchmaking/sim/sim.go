@@ -67,7 +67,7 @@ func (s *Simulation) removeRandom() {
 
     defer s.mutex.Unlock()
     idx := s.rand.Int() % len(s.connections)
-    slog.Info("SimRound removing connection", "idx", idx)
+    s.logger.Info("SimRound removing connection", "idx", idx)
     s.connections[idx].Disconnect()
     s.connections = append(s.connections[0:idx], s.connections[idx + 1:]...)
 

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"time"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/tursodatabase/go-libsql"
@@ -117,14 +116,12 @@ FROM GameServerConfigs;`
 }
 
 func (s *Sqlite) Update(stat GameServerConfig) error {
-    slog.Info("Updating", "stat", stat)
+    s.logger.Info("Updating", "stat", stat)
     query := `INSERT OR REPLACE INTO GameServerConfigs (id, state, connections, load, host, port)
 VALUES (?, ?, ?, ?, ?, ?);`
 
     // TODO probably don't need to update every
-    t := time.Now()
     _, err := s.db.Exec(query, stat.Id, stat.State, stat.Connections, stat.Load, stat.Host, stat.Port)
-    s.logger.Info("time to write update", "timeMS", time.Now().Sub(t).Abs().Milliseconds())
 
     return err
 }
@@ -149,7 +146,7 @@ func (s *Sqlite) GetById(id string) *GameServerConfig {
 FROM GameServerConfigs
 WHERE id=?;`, id)
     if len(g) == 1 {
-        slog.Info("GetById", "id", id, "stat", g[0].String())
+        s.logger.Info("GetById", "id", id, "stat", g[0].String())
         return &g[0]
     }
     return nil

@@ -84,18 +84,14 @@ func main() {
     if inline {
         ticker = time.NewTicker(time.Second * 2)
     } else {
-        ticker = time.NewTicker(time.Millisecond * 100)
+        ticker = time.NewTicker(time.Millisecond * 500)
     }
 
     for !s.Done {
         <-ticker.C
         count++
         if !inline {
-            if count % 10 == 0 {
-                fmt.Printf("[2J[1;1H\n")
-            } else {
-                fmt.Printf("[;H")
-            }
+            fmt.Printf("[2J[1;1H\n")
         }
         fmt.Printf("%s\n", s.String())
         fmt.Printf("%s\n", mm.String())

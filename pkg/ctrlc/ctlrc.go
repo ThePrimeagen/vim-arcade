@@ -15,7 +15,7 @@ func HandleCtrlC(cancel context.CancelFunc) {
     go func() {
         <-c
         cancel()
-        slog.Info("ctrl-c")
+        slog.Info("ctrl-c", "area", "ctrlc")
         time.Sleep(time.Millisecond * 250)
         // Run Cleanup
         os.Exit(1)
