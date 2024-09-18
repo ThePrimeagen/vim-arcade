@@ -161,6 +161,6 @@ func (s *Sqlite) GetServersByUtilization(maxLoad float64) []GameServerConfig {
 FROM GameServerConfigs
 WHERE load < ?
 ORDER BY load DESC;`, maxLoad)
-    slog.Info("GetServersByUtilization", "maxLoad", maxLoad, "count", len(g))
+    s.logger.Info("GetServersByUtilization", "maxLoad", maxLoad, "count", len(g))
     return g
 }

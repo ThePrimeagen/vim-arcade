@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
 )
@@ -42,6 +44,7 @@ const LevelTrace = slog.LevelDebug - 4
 const LevelFatal = slog.LevelError + 4
 const ProcessKey = "process"
 const AreaKey = "area"
+
 var allColors = []int{
 	31,
 	32,
@@ -62,49 +65,61 @@ var allColors = []int{
 
 // TODO make this better
 func getProcessColor(process string) int {
-    switch process {
-    case "sim":
-        return lightGreen
-    case "DummyServer":
-        return lightBlue
-    }
-    return lightMagenta
+	switch process {
+	case "sim":
+		return lightGreen
+	case "DummyServer":
+		return lightBlue
+	}
+	return lightMagenta
 }
 
 var areaColors = map[string]int{}
 var areaColorsIdx = 0
-func getAreaColor(area string) int {
-    color, ok := areaColors[area]
-    if !ok {
-        color = allColors[areaColorsIdx % len(allColors)]
-        areaColors[area] = color
-        areaColorsIdx++
-    }
 
-    return color
+func getAreaColor(area string) int {
+	color, ok := areaColors[area]
+	if !ok {
+		color = allColors[areaColorsIdx%len(allColors)]
+		areaColors[area] = color
+		areaColorsIdx++
+	}
+
+	return color
 }
 
 func stringifyAttrs(attrs map[string]any) string {
-    str := strings.Builder{}
-    for k, v := range attrs {
-        str.WriteString(k)
-        str.WriteString("=")
+	str := strings.Builder{}
+    keys := slices.Sorted(maps.Keys(attrs))
 
-        switch v.(type) {
-        // TODO Go deep, go long, and figure out if there is a better way here
-        case string,int,float32,float64,int8,int16,int32,int64,uint,uint8,uint16,uint32,uint64:
-            str.WriteString(fmt.Sprintf("%v", v))
-        default:
-            str.WriteString(fmt.Sprintf("%+v", v))
-        }
-        str.WriteString(" ")
-    }
-    return str.String()
+	for _, k := range keys {
+        v := attrs[k]
+		str.WriteString(k)
+		str.WriteString("=")
+
+		switch v.(type) {
+		// TODO Go deep, go long, and figure out if there is a better way here
+		case string, int, float32, float64, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+			str.WriteString(fmt.Sprintf("%v", v))
+		default:
+			str.WriteString(fmt.Sprintf("%+v", v))
+		}
+		str.WriteString(" ")
+	}
+	return strings.TrimSpace(str.String())
 }
-
 
 func colorizer(colorCode int, v string) string {
 	return fmt.Sprintf("\033[%sm%s%s", strconv.Itoa(colorCode), v, reset)
+}
+
+type ThrottledOutput struct {
+    header string
+    body string
+}
+
+func (t *ThrottledOutput) String() string {
+    return fmt.Sprintf("header=\"%s\" body=\"%s\"", t.header, t.body)
 }
 
 type Handler struct {
@@ -116,6 +131,11 @@ type Handler struct {
 	timestamp        bool
 	colorize         bool
 	outputEmptyAttrs bool
+
+	throttlePrintTime time.Duration
+    throttledOutput *ThrottledOutput
+    throttledCount int
+    throttleMutex sync.Mutex
 }
 
 func (h *Handler) Enabled(ctx context.Context, level slog.Level) bool {
@@ -123,11 +143,11 @@ func (h *Handler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &Handler{handler: h.handler.WithAttrs(attrs), buf: h.buf, r: h.r, mutex: h.mutex, writer: h.writer, colorize: h.colorize}
+    return &Handler{throttlePrintTime: h.throttlePrintTime, handler: h.handler.WithAttrs(attrs), buf: h.buf, r: h.r, mutex: h.mutex, writer: h.writer, colorize: h.colorize}
 }
 
 func (h *Handler) WithGroup(name string) slog.Handler {
-	return &Handler{handler: h.handler.WithGroup(name), buf: h.buf, r: h.r, mutex: h.mutex, writer: h.writer, colorize: h.colorize}
+	return &Handler{throttlePrintTime: h.throttlePrintTime, handler: h.handler.WithGroup(name), buf: h.buf, r: h.r, mutex: h.mutex, writer: h.writer, colorize: h.colorize}
 }
 
 func (h *Handler) computeAttrs(
@@ -174,7 +194,8 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 		level = levelAttr.Value.String() + ":"
 
 		switch r.Level {
-		case LevelTrace: fallthrough
+		case LevelTrace:
+			fallthrough
 		case slog.LevelDebug:
 			level = colorize(lightGray, level)
 		case slog.LevelInfo:
@@ -190,17 +211,17 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 		}
 	}
 
-    var timestamp string
-    timeAttr := slog.Attr{
-        Key:   slog.TimeKey,
-        Value: slog.StringValue(r.Time.Format(timeFormat)),
-    }
-    if h.r != nil {
-        timeAttr = h.r([]string{}, timeAttr)
-    }
-    if !timeAttr.Equal(slog.Attr{}) {
-        timestamp = colorize(lightGray, timeAttr.Value.String())
-    }
+	var timestamp string
+	timeAttr := slog.Attr{
+		Key:   slog.TimeKey,
+		Value: slog.StringValue(r.Time.Format(timeFormat)),
+	}
+	if h.r != nil {
+		timeAttr = h.r([]string{}, timeAttr)
+	}
+	if !timeAttr.Equal(slog.Attr{}) {
+		timestamp = colorize(lightGray, timeAttr.Value.String())
+	}
 
 	var msg string
 	msgAttr := slog.Attr{
@@ -219,53 +240,113 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 		return err
 	}
 
-    process, ok := attrs[ProcessKey]
-    assert.Assert(ok, "must provide process for my delicious pretty log")
-    area, ok := attrs[AreaKey]
-    assert.Assert(ok, "must provide area for my delicious pretty log")
+	process, ok := attrs[ProcessKey]
+	assert.Assert(ok, "must provide process for my delicious pretty log")
+	area, ok := attrs[AreaKey]
+	assert.Assert(ok, "must provide area for my delicious pretty log")
 
-    delete(attrs, ProcessKey)
-    delete(attrs, AreaKey)
+	delete(attrs, ProcessKey)
+	delete(attrs, AreaKey)
 
 	var attrsAsBytes []byte
 	if h.outputEmptyAttrs || len(attrs) > 0 {
-        attrString := stringifyAttrs(attrs)
-        if len(attrString) > 42 {
-            attrsAsBytes, err = json.MarshalIndent(attrs, "", "  ")
-            if err != nil {
-                return fmt.Errorf("error when marshaling attrs: %w", err)
-            }
-        } else {
-            attrsAsBytes = []byte(attrString)
-        }
+		attrString := stringifyAttrs(attrs)
+		if len(attrString) > 42 {
+			attrsAsBytes, err = json.MarshalIndent(attrs, "", "  ")
+			if err != nil {
+				return fmt.Errorf("error when marshaling attrs: %w", err)
+			}
+		} else {
+			attrsAsBytes = []byte(attrString)
+		}
 	}
 
-	out := strings.Builder{}
+    header := strings.Builder{}
+	body := strings.Builder{}
 	if h.timestamp && len(timestamp) > 0 {
-		out.WriteString(timestamp)
-		out.WriteString(" ")
+		header.WriteString(timestamp)
+		header.WriteString(" ")
 	}
 
-    out.WriteString(colorize(getProcessColor(process.(string)), process.(string)))
-    out.WriteString(":")
-    out.WriteString(colorize(getAreaColor(area.(string)), area.(string)))
-    out.WriteString(" ")
+	header.WriteString(colorize(getProcessColor(process.(string)), process.(string)))
+	header.WriteString(":")
+	header.WriteString(colorize(getAreaColor(area.(string)), area.(string)))
+	header.WriteString(" ")
 
-    out.WriteString(level)
-    out.WriteString(" ")
-    out.WriteString(msg)
-    out.WriteString(" ")
+	body.WriteString(level)
+	body.WriteString(" ")
+	body.WriteString(msg)
 
 	if len(attrsAsBytes) > 0 {
-		out.WriteString(colorize(lightGray, string(attrsAsBytes)))
+        body.WriteString(" ")
+		body.WriteString(colorize(lightGray, string(attrsAsBytes)))
 	}
 
-	_, err = io.WriteString(h.writer, out.String()+"\n")
-	if err != nil {
-		return err
-	}
-
+	h.dedupedInnerPrint(header.String(), body.String())
 	return nil
+}
+
+func (h *Handler) output() error {
+    output := h.throttledOutput
+    count := h.throttledCount
+
+    h.throttledOutput = nil
+    h.throttledCount = 1
+
+	_, err := io.WriteString(h.writer, output.header)
+    if err != nil {
+        return err
+    }
+
+    if count > 1 {
+        _, err = io.WriteString(h.writer, fmt.Sprintf("%d ", count))
+    }
+
+	_, err = io.WriteString(h.writer, output.body)
+    if err != nil {
+        return err
+    }
+	_, err = io.WriteString(h.writer, "\n")
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+func (h *Handler) dedupedInnerPrint(header, body string) {
+    h.throttleMutex.Lock()
+    defer h.throttleMutex.Unlock()
+
+    if h.throttledOutput != nil {
+        if h.throttledOutput.header == header && h.throttledOutput.body == body {
+            h.throttledCount++
+            return
+        } else {
+            err := h.output()
+            assert.NoError(err, "unable to output from logger", "err", err)
+        }
+    }
+
+    h.throttledOutput = &ThrottledOutput{
+        header: header,
+        body: body,
+    }
+    innerOutput := h.throttledOutput
+
+    go func() {
+        // TODO i am using sleep intentionally because it is easy not because
+        // it is correct If i wish to change this i need a better way to check
+        // this instead of spawning new go routines every flippinflippery log
+        <-time.NewTimer(h.throttlePrintTime).C
+
+        h.throttleMutex.Lock()
+        defer h.throttleMutex.Unlock()
+
+        if innerOutput == h.throttledOutput {
+            err := h.output()
+            assert.NoError(err, "unable to output from logger", "err", err)
+        }
+    }()
 }
 
 func suppressDefaults(
@@ -291,8 +372,12 @@ func New(handlerOptions *slog.HandlerOptions, options ...Option) *Handler {
 
 	buf := &bytes.Buffer{}
 	handler := &Handler{
-		buf: buf,
-        timestamp: false,
+		buf:       buf,
+		timestamp: false,
+		throttlePrintTime: time.Second,
+        throttledOutput: nil,
+        throttledCount: 0,
+        throttleMutex: sync.Mutex{},
 		handler: slog.NewJSONHandler(buf, &slog.HandlerOptions{
 			Level:       handlerOptions.Level,
 			AddSource:   handlerOptions.AddSource,
@@ -309,18 +394,25 @@ func New(handlerOptions *slog.HandlerOptions, options ...Option) *Handler {
 	return handler
 }
 
-func NewHandler(opts *slog.HandlerOptions, params PrettyLoggerParams, options... Option) *Handler {
-    options = append([]Option{
-        WithDestinationWriter(params.Out),
-        WithColor(),
-        WithOutputEmptyAttrs(),
-    }, options...)
+func NewHandler(opts *slog.HandlerOptions, params PrettyLoggerParams, options ...Option) *Handler {
+	options = append([]Option{
+		WithDestinationWriter(params.Out),
+		WithColor(),
+		WithOutputEmptyAttrs(),
+        WithSetThrottleTime(params.ThrottleTime),
+	}, options...)
 	return New(opts, options...)
 }
 
 type Option func(h *Handler)
 
-func WithTimestamp(writer io.Writer) Option {
+func WithSetThrottleTime(t time.Duration) Option {
+	return func(h *Handler) {
+		h.throttlePrintTime = t
+	}
+}
+
+func WithTimestamp() Option {
 	return func(h *Handler) {
 		h.timestamp = true
 	}
@@ -338,6 +430,12 @@ func WithColor() Option {
 	}
 }
 
+func WithoutColor() Option {
+	return func(h *Handler) {
+		h.colorize = false
+	}
+}
+
 func WithOutputEmptyAttrs() Option {
 	return func(h *Handler) {
 		h.outputEmptyAttrs = true
@@ -345,8 +443,20 @@ func WithOutputEmptyAttrs() Option {
 }
 
 type PrettyLoggerParams struct {
-	Out   *os.File
+	Out   io.Writer
 	Level slog.Level
+    ThrottleTime time.Duration
+}
+
+func NewParams(out io.Writer) PrettyLoggerParams {
+    return PrettyLoggerParams{
+        ThrottleTime: time.Second,
+
+        // TODO use env ???
+        Level: LevelTrace,
+
+        Out: out,
+    }
 }
 
 func SetProgramLevelPrettyLogger(params PrettyLoggerParams) *slog.Logger {

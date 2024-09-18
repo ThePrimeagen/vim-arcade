@@ -46,10 +46,7 @@ func main() {
         fh = os.Stdout
     }
 
-    logger := prettylog.SetProgramLevelPrettyLogger(prettylog.PrettyLoggerParams{
-        Out: fh,
-        Level: slog.LevelDebug,
-    })
+    logger := prettylog.SetProgramLevelPrettyLogger(prettylog.NewParams(fh))
 
     slog.SetDefault(logger.With("process", "sim"))
     logger = slog.Default().With("area", "TestMatchMaking")

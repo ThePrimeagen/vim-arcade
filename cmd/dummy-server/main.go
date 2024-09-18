@@ -19,10 +19,7 @@ func getId() string {
 func main() {
     godotenv.Load()
 
-    prettylog.SetProgramLevelPrettyLogger(prettylog.PrettyLoggerParams{
-        Out: os.Stderr,
-        Level: slog.LevelDebug,
-    })
+    prettylog.SetProgramLevelPrettyLogger(prettylog.NewParams(os.Stderr))
     slog.SetDefault(slog.Default().With("process", "DummyServer"))
 
     ll :=  slog.Default().With("area", "dummy-server")
