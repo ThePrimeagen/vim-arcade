@@ -31,6 +31,7 @@ type Cmder struct {
     stdout io.ReadCloser
     stderr io.ReadCloser
     ctx context.Context
+    done chan struct{}
 }
 
 func NewCmder(name string, ctx context.Context) *Cmder {
@@ -40,6 +41,7 @@ func NewCmder(name string, ctx context.Context) *Cmder {
         Name: name,
         Args: []string{},
         ctx: ctx,
+        done: make(chan struct{}, 1),
     }
 }
 
@@ -97,6 +99,10 @@ func (c *Cmder) Close() {
             slog.Error("cannot close cmder stderr", "err", err)
         }
     }
+}
+
+func (c *Cmder) Done() {
+    <-c.done
 }
 
 func (c *Cmder) WriteLine(b []byte) error {
@@ -157,6 +163,8 @@ func (c *Cmder) Run(env []string) error {
         go io.Copy(c.Err, stderr)
     }
 
-    return c.cmd.Wait()
+    err = c.cmd.Wait()
+    c.done<-struct{}{}
+    return err
 }
 

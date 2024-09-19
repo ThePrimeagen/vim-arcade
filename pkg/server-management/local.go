@@ -76,6 +76,19 @@ func (l *LocalServers) CreateNewServer(ctx context.Context) (string, error) {
 		if err != nil {
 			l.logger.Error("unable to run cmdr", "err", err)
 		}
+
+        // TODO the database checking to prove that this commander has closed
+        // properly
+        done := false
+        select {
+        case <-ctx.Done():
+            done = true
+        default:
+        }
+
+        if !done {
+            assert.Never("cmdr has closed unexpectedly")
+        }
 	}()
 
 	l.servers = append(l.servers, cmdr)
@@ -86,11 +99,6 @@ func (l *LocalServers) CreateNewServer(ctx context.Context) (string, error) {
 func (l *LocalServers) WaitForReady(ctx context.Context, id string) error {
 	for {
 		time.Sleep(time.Millisecond * 50)
-		stats, err := l.stats.GetAllGameServerConfigs()
-		assert.NoError(err, "unable to get the stats", "err", err)
-		for _, s := range stats {
-			l.logger.Info("WaitForReady#getStats", "state", s.State, "id", s.Id, "connections", s.Connections, "port", s.Port)
-		}
 
 		gs := l.stats.GetById(id)
 		l.logger.Info("WaitForReady", "id", id, "gs", gs)
