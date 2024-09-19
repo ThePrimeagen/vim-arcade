@@ -48,6 +48,7 @@ func main() {
     defer server.Close()
     go db.Run(ctx)
     go func () {
+        ll.Info("running server", "port", port, "host", host)
         err := server.Run(ctx)
         if err != nil {
             ll.Error("Game Server Run came returned with an error", "error", err)

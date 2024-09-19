@@ -85,7 +85,6 @@ func Never(msg string, data ...any) {
 
 func NoError(err error, msg string, data ...any) {
 	if err != nil {
-		slog.Error("NoError#error encountered", "error", err)
 		runAssert(msg, data...)
 	}
 }

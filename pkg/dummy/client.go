@@ -7,9 +7,36 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
+	ioutils "vim-arcade.theprimeagen.com/pkg/io-utils"
 )
+
+type ClientState int
+
+const (
+	CSInitialized ClientState = iota
+	CSConnecting
+	CSConnected
+	CSDisconnected
+)
+
+func ClientStateToString(state ClientState) string {
+	switch state {
+	case CSInitialized:
+		return "initialized"
+	case CSConnecting:
+		return "connecting"
+	case CSConnected:
+		return "connected"
+	case CSDisconnected:
+		return "disconnected"
+	}
+
+	assert.Never("unknown client state", "state", state)
+	return ""
+}
 
 type hostAndPort struct {
 	host string
@@ -23,7 +50,14 @@ type DummyClient struct {
 	conn   net.Conn
 	done   chan struct{}
 	ready  chan struct{}
+	mutex  sync.Mutex
+	gsHost string
+	gsPort uint16
+	State  ClientState
+	ConnId int
 }
+
+var clientId = 0
 
 func getDummyClientLogger() *slog.Logger {
 	return slog.Default().With("area", "DummyClient")
@@ -33,23 +67,39 @@ func NewDummyClientFromConnString(hostAndPort string) DummyClient {
 	parts := strings.SplitN(hostAndPort, ":", 2)
 	port, err := strconv.Atoi(parts[1])
 	assert.NoError(err, "dummy client was provided a bad string", "hostAndPortString", hostAndPort)
+
+	clientId++
 	return DummyClient{
+		State:  CSInitialized,
 		host:   parts[0],
 		port:   uint16(port),
+		mutex:  sync.Mutex{},
 		logger: getDummyClientLogger(),
+		ConnId: clientId,
 		done:   make(chan struct{}, 1),
-		ready:   make(chan struct{}, 1),
+		ready:  make(chan struct{}, 1),
 	}
 }
 
 func NewDummyClient(host string, port uint16) DummyClient {
+	clientId++
 	return DummyClient{
+		State:  CSInitialized,
 		host:   host,
 		port:   uint16(port),
 		logger: getDummyClientLogger(),
 		done:   make(chan struct{}, 1),
-		ready:   make(chan struct{}, 1),
+		ready:  make(chan struct{}, 1),
+		ConnId: clientId,
 	}
+}
+
+func (d *DummyClient) HostAndPort() (string, uint16) {
+	return d.host, d.port
+}
+
+func (d *DummyClient) GameServerAddr() string {
+	return fmt.Sprintf("%s:%d", d.gsHost, d.gsPort)
 }
 
 func (d *DummyClient) Write(data []byte) error {
@@ -59,8 +109,9 @@ func (d *DummyClient) Write(data []byte) error {
 	return err
 }
 
+// TODO probably do something with context, maybe ioutils is context done
 func (d *DummyClient) connectToMatchMaking(ctx context.Context) hostAndPort {
-    connStr := fmt.Sprintf("%s:%d", d.host, d.port)
+	connStr := fmt.Sprintf("%s:%d", d.host, d.port)
 	d.logger.Info("connect to matchmaking", "conn", connStr)
 	conn, err := net.Dial("tcp4", connStr)
 	assert.NoError(err, "could not connect to server", "error", err)
@@ -83,29 +134,31 @@ func (d *DummyClient) connectToMatchMaking(ctx context.Context) hostAndPort {
 }
 
 func (d *DummyClient) Connect(ctx context.Context) error {
+	d.State = CSConnecting
 	d.logger.Info("client connecting to match making")
 	hap := d.connectToMatchMaking(ctx)
-	d.logger.Info("client connecting to game server", "host", d.host, "port", d.port)
+    d.gsHost = hap.host
+    d.gsPort = hap.port
+	d.logger.Info("client connecting to game server", "host", hap.host, "port", hap.port)
 	conn, err := net.Dial("tcp4", fmt.Sprintf("%s:%d", hap.host, hap.port))
 	assert.NoError(err, "client could not connect to the game server", "err", err)
-    d.conn = conn
+	d.State = CSConnected
+	d.conn = conn
 	d.logger.Info("client connected to game server", "host", d.host, "port", d.port)
-    d.ready<-struct{}{}
+	d.ready <- struct{}{}
+
+	ctxReader := ioutils.NewContextReader(ctx)
+	go ctxReader.Read(conn)
 
 	go func() {
-		data := make([]byte, 1000, 1000)
-		for {
-			// TODO do i need to make this any better for dummy test clients?
-			// probably not?
-			n, err := conn.Read(data)
-			if err != nil {
-				d.logger.Error("connection read error", "err", err)
-				break
-			}
-
-			d.logger.Info("data received", "data", string(data[0:n]))
+		for bytes := range ctxReader.Out {
+			d.logger.Error("message received", "data", string(bytes))
 		}
 
+		if err, ok := <-ctxReader.Err; ok {
+			d.logger.Error("error with client", "error", err)
+		}
+		d.State = CSDisconnected
 		d.done <- struct{}{}
 	}()
 

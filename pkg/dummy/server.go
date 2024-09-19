@@ -82,6 +82,14 @@ func (g *DummyGameServer) incConnections(amount int) {
 
 	g.stats.Connections += amount
 	g.stats.Load += float32(amount) * 0.05
+    if amount >= 0 {
+        g.stats.ConnectionsAdded += amount
+    } else {
+        g.stats.ConnectionsRemoved -= amount
+    }
+
+    g.logger.Info("incConnections", "stats", g.stats.String())
+
     err := g.db.Update(g.stats)
     assert.NoError(err, "failed while writing to the database", "err", err)
 }
@@ -107,8 +115,8 @@ func (g *DummyGameServer) handleConnection(ctx context.Context, conn net.Conn) {
 
         // TODO develop a connection struct that has an id
         g.logger.Warn("closing client")
-        conn.Close()
         g.incConnections(-1)
+        conn.Close()
 	}()
 }
 
@@ -124,7 +132,7 @@ func (g *DummyGameServer) Run(ctx context.Context) error {
 
     g.stats.State = gameserverstats.GSStateReady
     err = g.db.Update(g.stats)
-    assert.NoError(err, "unable to save the stats of the dummy game server on connection", err)
+    assert.NoError(err, "unable to save the stats of the dummy game server on connection", "error", err)
 
     g.logger.Warn("dummy-server#Run running...")
 

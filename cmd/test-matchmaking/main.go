@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"vim-arcade.theprimeagen.com/cmd/test-matchmaking/sim"
+	"vim-arcade.theprimeagen.com/pkg/assert"
 	"vim-arcade.theprimeagen.com/pkg/ctrlc"
 	"vim-arcade.theprimeagen.com/pkg/dummy"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
@@ -24,7 +25,12 @@ func createMatchMaking() (servermanagement.LocalServers, *gameserverstats.Sqlite
     gameserverstats.ClearSQLiteFiles(path)
     db := gameserverstats.NewSqlite("file:" + path)
     db.SetSqliteModes()
-    db.CreateGameServerConfigs()
+    err := db.CreateGameServerConfigs()
+    assert.NoError(err, "unable to create game server configs", "err", err)
+
+    configs, err := db.GetAllGameServerConfigs()
+    assert.NoError(err, "unable to get server configs", "err", err)
+    assert.Assert(len(configs) == 0, "expected the server to be free on configs", "configs", configs)
 
     local := servermanagement.NewLocalServers(db, servermanagement.ServerParams{
         MaxLoad: 0.9,
@@ -72,6 +78,8 @@ func main() {
         Stats: db,
         MaxConnections: 10,
         TimeToConnectionCountMS: 1500,
+        ConnectionSleepMinMS: 50,
+        ConnectionSleepMaxMS: 75,
     })
     go s.RunSimulation(ctx)
     go local.Run(ctx)

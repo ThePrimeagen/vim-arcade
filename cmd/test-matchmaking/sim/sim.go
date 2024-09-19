@@ -4,8 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"math/rand"
+	"os"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,145 +20,245 @@ import (
 )
 
 type SimulationParams struct {
-    Seed int64
-    Rounds int
-    Host string
-    Port uint16
-    Stats gameserverstats.GSSRetriever
-    MaxConnections int
-    TimeToConnectionCountMS int
+	Seed                    int64
+	Rounds                  int
+	Host                    string
+	Port                    uint16
+	Stats                   gameserverstats.GSSRetriever
+	MaxConnections          int
+	TimeToConnectionCountMS int
+	ConnectionSleepMinMS    int
+	ConnectionSleepMaxMS    int
 }
 
 type Simulation struct {
-    params SimulationParams
-    connections []*dummy.DummyClient
-    rand *rand.Rand
-    Done bool
-    logger *slog.Logger
-    mutex sync.Mutex
-    adds int
-    removes int
+	params       SimulationParams
+	connections  []*dummy.DummyClient
+	rand         *rand.Rand
+	Done         bool
+	logger       *slog.Logger
+	mutex        sync.Mutex
+	adds         int
+	removes      int
+	totalAdds    int
+	totalRemoves int
+	currentRound int
+}
+
+type ConnectionValidator map[string]int
+
+func sumConfigConns(configs []gameserverstats.GameServerConfig) ConnectionValidator {
+    out := make(map[string]int)
+    for _, c := range configs {
+        out[c.Addr()] = c.Connections
+    }
+    return out
+}
+
+func (c *ConnectionValidator) Add(conns []*dummy.DummyClient) {
+    for _, conn := range conns {
+        fmt.Fprintf(os.Stderr, "ConnectionValidator#Add connId=%d addr=%s\n", conn.ConnId, conn.GameServerAddr())
+        (*c)[conn.GameServerAddr()] += 1
+    }
+}
+
+func (c *ConnectionValidator) Remove(conns []*dummy.DummyClient) {
+    for _, conn := range conns {
+        fmt.Fprintf(os.Stderr, "ConnectionValidator#Remove connId=%d addr=%s\n", conn.ConnId, conn.GameServerAddr())
+        (*c)[conn.GameServerAddr()] -= 1
+    }
+}
+
+func (c *ConnectionValidator) String() string {
+    out := make([]string, 0, len(*c))
+    for k, v := range *c {
+        out = append(out, fmt.Sprintf("%s = %d", k, v))
+    }
+    return strings.Join(out, "\n")
 }
 
 func NewSimulation(params SimulationParams) Simulation {
-    return Simulation{
-        logger: slog.Default().With("area", "Simulation"),
-        params: params,
-        connections: []*dummy.DummyClient{},
-        rand: rand.New(rand.NewSource(params.Seed)),
-        mutex: sync.Mutex{},
-    }
+	return Simulation{
+		logger:       slog.Default().With("area", "Simulation"),
+		params:       params,
+		connections:  []*dummy.DummyClient{},
+		rand:         rand.New(rand.NewSource(params.Seed)),
+		mutex:        sync.Mutex{},
+		totalAdds:    0,
+		totalRemoves: 0,
+	}
 }
 
 func (s *Simulation) push(client *dummy.DummyClient) {
-    s.mutex.Lock()
-    defer s.mutex.Unlock()
-    s.connections = append(s.connections, client)
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.connections = append(s.connections, client)
 }
 
 func (s *Simulation) nextInt(min int, max int) int {
-    out := s.rand.Int()
-    diff := max - min
-    if diff == 0 {
-        return min
-    }
+	out := s.rand.Int()
+	diff := max - min
+	if diff == 0 {
+		return min
+	}
 
-    return min + out % diff
+	return min + out%diff
 }
 
-func (s *Simulation) removeRandom() {
-    s.mutex.Lock()
+func (s *Simulation) removeRandom() *dummy.DummyClient {
+	s.mutex.Lock()
 
-    defer s.mutex.Unlock()
-    idx := s.rand.Int() % len(s.connections)
-    s.logger.Info("SimRound removing connection", "idx", idx)
-    s.connections[idx].Disconnect()
-    s.connections = append(s.connections[0:idx], s.connections[idx + 1:]...)
+	defer s.mutex.Unlock()
+	idx := s.rand.Int() % len(s.connections)
+	s.logger.Info("SimRound removing connection", "idx", idx)
+    client := s.connections[idx]
+	client.Disconnect()
+	s.connections = append(s.connections[0:idx], s.connections[idx+1:]...)
 
-    return
+	return client
 }
 
 func (s *Simulation) String() string {
-    return fmt.Sprintf(`----- Simulation -----
-adds: %d
-removes: %d
+	return fmt.Sprintf(`----- Simulation -----
+adds: %d (%d)
+removes: %d (%d)
 round: %d
-`, s.adds, s.removes, s.params.Rounds)
+`, s.adds, s.totalAdds, s.removes, s.totalRemoves, s.currentRound)
 }
 
 func (s *Simulation) client(ctx context.Context) *dummy.DummyClient {
-    s.logger.Log(ctx, prettylog.LevelTrace, "client connecting...")
-    client := dummy.NewDummyClient(s.params.Host, s.params.Port)
-    err := client.Connect(ctx)
-    assert.NoError(err, "unable to connect to client", "err", err)
-    client.WaitForReady()
-    s.logger.Log(ctx, prettylog.LevelTrace, "client connected")
-    s.push(&client)
-    return &client
+	s.logger.Log(ctx, prettylog.LevelTrace, "client connecting...")
+	client := dummy.NewDummyClient(s.params.Host, s.params.Port)
+	err := client.Connect(ctx)
+	assert.NoError(err, "unable to connect to client", "err", err)
+	client.WaitForReady()
+	s.logger.Log(ctx, prettylog.LevelTrace, "client connected")
+	return &client
+}
+
+func compareServerStates(before []gameserverstats.GameServerConfig, after []gameserverstats.GameServerConfig, adds []*dummy.DummyClient, removes []*dummy.DummyClient) {
+    beforeValidator := sumConfigConns(before)
+    afterValidator := sumConfigConns(after)
+
+    beforeValidator.Add(adds)
+    beforeValidator.Remove(removes)
+
+    beforeKeysIter := maps.Keys(beforeValidator)
+    afterKeysIter := maps.Keys(afterValidator)
+
+    beforeKeys := slices.SortedFunc(beforeKeysIter, func(a, b string) int {
+        return strings.Compare(a, b)
+    })
+    afterKeys := slices.SortedFunc(afterKeysIter, func(a, b string) int {
+        return strings.Compare(a, b)
+    })
+
+    assert.Assert(len(beforeKeys) == len(afterKeys), "before and after keys have different lengths", "before", beforeKeys, "after", afterKeys)
+    for i, v := range beforeKeys {
+        assert.Assert(afterKeys[i] == v, "before and after key order doesn't match", "i", i, "before", v, "after", afterKeys[i])
+        if beforeValidator[v] != afterValidator[v] {
+            fmt.Fprintf(os.Stderr, "--------------- Validation Failed ---------------\n")
+
+            b := sumConfigConns(before)
+            fmt.Fprintf(os.Stderr, "server state before:\n%s\n", b.String())
+            fmt.Fprintf(os.Stderr, "server state after:\n%s\n", afterValidator.String())
+            fmt.Fprintf(os.Stderr, "Adds:\n")
+            for i, c := range adds {
+                fmt.Fprintf(os.Stderr, "%d: %s\n", i, c.GameServerAddr())
+            }
+            fmt.Fprintf(os.Stderr, "Removes:\n")
+            for i, c := range removes {
+                fmt.Fprintf(os.Stderr, "%d: %s\n", i, c.GameServerAddr())
+            }
+            assert.Never("expected vs received connection count mismatch", "failedOn", v, "expected", afterValidator, "received", beforeValidator)
+        }
+    }
 }
 
 func (s *Simulation) RunSimulation(ctx context.Context) error {
-    s.Done = false
+	s.Done = false
 
-    s.logger.Error("starting simulation")
-    // Seed the random number generator for different results each time
-    outer:
-    for round := range s.params.Rounds {
-        select {
-        case <-ctx.Done():
-            break outer
-        default:
-        }
+	s.logger.Error("starting simulation")
+	// Seed the random number generator for different results each time
+outer:
+	for round := range s.params.Rounds {
+		s.currentRound = round
 
-        start := time.Now()
-        startConnCount := s.params.Stats.GetTotalConnectionCount()
-        adds := int(math.Abs(s.rand.NormFloat64() * float64(s.params.MaxConnections)))
-        removes := int(math.Abs(s.rand.NormFloat64() * float64(s.params.MaxConnections)))
-        s.logger.Info("SimRound", "round", round, "current", startConnCount, "adds", adds, "removes", removes)
+		select {
+		case <-ctx.Done():
+			break outer
+		default:
+		}
 
-        wait := sync.WaitGroup{}
-        wait.Add(2)
-        go func() {
-            s.adds = adds
-            for range adds {
-                s.adds -= 1
-                <-time.NewTimer(time.Millisecond * time.Duration(s.nextInt(50, 300))).C
-                s.client(ctx);
-            }
-            wait.Done()
-        }()
+		start := time.Now()
+		servers, err := s.params.Stats.GetAllGameServerConfigs()
+        assert.NoError(err, "unable to get all game servers")
+		startConnCount := s.params.Stats.GetTotalConnectionCount()
+		adds := int(math.Abs(s.rand.NormFloat64() * float64(s.params.MaxConnections)))
+		removes := int(math.Abs(s.rand.NormFloat64() * float64(s.params.MaxConnections)))
+		s.logger.Info("SimRound", "round", round, "current", startConnCount, "adds", adds, "removes", removes)
+		addedConns := []*dummy.DummyClient{}
+		removedConns := []*dummy.DummyClient{}
 
-        actualRemoves := 0
-        go func() {
-            s.removes = removes
-            for range removes {
-                s.removes -= 1
-                if len(s.connections) == 0 {
-                    continue
-                }
-                <-time.NewTimer(time.Millisecond * time.Duration(s.nextInt(50, 300))).C
-                s.removeRandom()
-                actualRemoves++
-            }
-            wait.Done()
-        }()
+		wait := sync.WaitGroup{}
+		wait.Add(2)
+		go func() {
+			s.adds = adds
+			for range adds {
+				s.adds -= 1
+				<-time.NewTimer(time.Millisecond * time.Duration(s.nextInt(s.params.ConnectionSleepMinMS, s.params.ConnectionSleepMaxMS))).C
+				addedConns = append(addedConns, s.client(ctx))
+			}
+			wait.Done()
+		}()
 
-        wait.Wait();
+		actualRemoves := 0
+		go func() {
+			s.removes = removes
+			for range removes {
+				s.removes -= 1
+				if len(s.connections) == 0 {
+					continue
+				}
+				<-time.NewTimer(time.Millisecond * time.Duration(s.nextInt(s.params.ConnectionSleepMinMS, s.params.ConnectionSleepMaxMS))).C
+				removedConns = append(removedConns, s.removeRandom())
+				actualRemoves++
+			}
+			wait.Done()
+		}()
 
-        stateMet := false
-        start = time.Now()
-        expected := startConnCount + adds - actualRemoves
-        for !stateMet && time.Now().Sub(start).Milliseconds() < int64(s.params.TimeToConnectionCountMS) {
-            conns := s.params.Stats.GetTotalConnectionCount()
-            stateMet = conns == expected
-            <-time.NewTimer(time.Millisecond * 10).C
-        }
+		wait.Wait()
 
-        assert.Assert(stateMet, "expected to have connection and could not get there within 1 second", "startOfLoop", startConnCount, "adds", adds, "removes", actualRemoves, "expectedTotal", expected, "total", s.params.Stats.GetTotalConnectionCount())
-        s.logger.Info("SimRound finished", "time taken ms", time.Now().Sub(start).Milliseconds())
-    }
+		stateMet := false
+		start = time.Now()
+		expected := startConnCount.Connections + adds - actualRemoves
+		s.totalAdds += adds
+		s.totalRemoves += actualRemoves
 
-    s.Done = true
-    return nil
+		for !stateMet && time.Now().Sub(start).Milliseconds() < int64(s.params.TimeToConnectionCountMS) {
+			conns := s.params.Stats.GetTotalConnectionCount()
+			stateMet = conns.Connections == expected &&
+                conns.ConnectionsAdded == startConnCount.ConnectionsAdded + adds &&
+                conns.ConnectionsRemoved == startConnCount.ConnectionsRemoved + actualRemoves
+			<-time.NewTimer(time.Millisecond * 10).C
+		}
+
+		for _, c := range addedConns {
+			assert.Assert(c.State == dummy.CSConnected, "state of connection is not connected", "state", dummy.ClientStateToString(c.State))
+            s.push(c)
+		}
+
+		for _, c := range removedConns {
+			assert.Assert(c.State == dummy.CSDisconnected, "state of connection is not disconnected", "state", dummy.ClientStateToString(c.State))
+		}
+
+		serversAfter, err := s.params.Stats.GetAllGameServerConfigs()
+        assert.NoError(err, "unable to get all game servers")
+		assert.Assert(stateMet, "expected to have connection and could not get there within 1 second", "startOfLoop", startConnCount, "adds", adds, "removes", actualRemoves, "expectedTotal", expected, "total", s.params.Stats.GetTotalConnectionCount())
+        compareServerStates(servers, serversAfter, addedConns, removedConns)
+		s.logger.Info("SimRound finished", "totalAdds", s.totalAdds, "totalRemoves", s.totalRemoves, "time taken ms", time.Now().Sub(start).Milliseconds())
+	}
+
+	s.Done = true
+	return nil
 }
-
