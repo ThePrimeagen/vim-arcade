@@ -72,11 +72,11 @@ func main() {
     mm.WaitForReady(ctx)
     s := sim.NewSimulation(sim.SimulationParams{
         Seed: 69,
-        Rounds: 1000,
+        Rounds: 50000,
         Host: "",
         Port: uint16(mm.Params.Port),
         Stats: db,
-        MaxConnections: 10,
+        StdConnections: 50,
         TimeToConnectionCountMS: 1500,
         ConnectionSleepMinMS: 50,
         ConnectionSleepMaxMS: 75,

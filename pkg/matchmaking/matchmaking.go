@@ -82,12 +82,19 @@ func (m *MatchMakingServer) handleNewConnection(ctx context.Context, conn net.Co
 	conn.Write([]byte(gs))
 }
 
-func innerListenForConnections(listener net.Listener) <-chan net.Conn {
+func innerListenForConnections(listener net.Listener, ctx context.Context) <-chan net.Conn {
 	ch := make(chan net.Conn, 10)
 	go func() {
 		for {
 			c, err := listener.Accept()
-			assert.NoError(err, "matchmaking was unable to accept connection", "err", err)
+            select {
+            case <-ctx.Done():
+                if nerr, ok := err.(*net.OpError); ok && nerr.Err.Error() != "use of closed network connection" {
+                    assert.NoError(err, "matchmaking was unable to accept connection", "err", err)
+                }
+            default:
+                assert.NoError(err, "matchmaking was unable to accept connection", "err", err)
+            }
 			ch <- c
 		}
 	}()
@@ -99,7 +106,7 @@ func (m *MatchMakingServer) checkForDeadInstances() {
 }
 
 func (m *MatchMakingServer) listenForConnections(ctx context.Context, listener net.Listener) {
-	conns := innerListenForConnections(listener)
+	conns := innerListenForConnections(listener, ctx)
 
     // TODO Configurable
     timer := time.NewTicker(time.Second * 3)

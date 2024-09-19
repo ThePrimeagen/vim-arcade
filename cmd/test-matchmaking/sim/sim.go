@@ -25,7 +25,7 @@ type SimulationParams struct {
 	Host                    string
 	Port                    uint16
 	Stats                   gameserverstats.GSSRetriever
-	MaxConnections          int
+	StdConnections          int
 	TimeToConnectionCountMS int
 	ConnectionSleepMinMS    int
 	ConnectionSleepMaxMS    int
@@ -57,14 +57,12 @@ func sumConfigConns(configs []gameserverstats.GameServerConfig) ConnectionValida
 
 func (c *ConnectionValidator) Add(conns []*dummy.DummyClient) {
     for _, conn := range conns {
-        fmt.Fprintf(os.Stderr, "ConnectionValidator#Add connId=%d addr=%s\n", conn.ConnId, conn.GameServerAddr())
         (*c)[conn.GameServerAddr()] += 1
     }
 }
 
 func (c *ConnectionValidator) Remove(conns []*dummy.DummyClient) {
     for _, conn := range conns {
-        fmt.Fprintf(os.Stderr, "ConnectionValidator#Remove connId=%d addr=%s\n", conn.ConnId, conn.GameServerAddr())
         (*c)[conn.GameServerAddr()] -= 1
     }
 }
@@ -194,8 +192,8 @@ outer:
 		servers, err := s.params.Stats.GetAllGameServerConfigs()
         assert.NoError(err, "unable to get all game servers")
 		startConnCount := s.params.Stats.GetTotalConnectionCount()
-		adds := int(math.Abs(s.rand.NormFloat64() * float64(s.params.MaxConnections)))
-		removes := int(math.Abs(s.rand.NormFloat64() * float64(s.params.MaxConnections)))
+		adds := int(math.Abs(s.rand.NormFloat64() * float64(s.params.StdConnections)))
+		removes := int(math.Abs(s.rand.NormFloat64() * float64(s.params.StdConnections)))
 		s.logger.Info("SimRound", "round", round, "current", startConnCount, "adds", adds, "removes", removes)
 		addedConns := []*dummy.DummyClient{}
 		removedConns := []*dummy.DummyClient{}
@@ -256,9 +254,10 @@ outer:
         assert.NoError(err, "unable to get all game servers")
 		assert.Assert(stateMet, "expected to have connection and could not get there within 1 second", "startOfLoop", startConnCount, "adds", adds, "removes", actualRemoves, "expectedTotal", expected, "total", s.params.Stats.GetTotalConnectionCount())
         compareServerStates(servers, serversAfter, addedConns, removedConns)
-		s.logger.Info("SimRound finished", "totalAdds", s.totalAdds, "totalRemoves", s.totalRemoves, "time taken ms", time.Now().Sub(start).Milliseconds())
+		s.logger.Info("SimRound finished", "round", round, "totalAdds", s.totalAdds, "totalRemoves", s.totalRemoves, "time taken ms", time.Now().Sub(start).Milliseconds())
 	}
 
+    s.logger.Warn("Simulation Completed")
 	s.Done = true
 	return nil
 }

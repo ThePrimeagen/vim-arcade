@@ -52,6 +52,7 @@ func runAssert(msg string, args ...interface{}) {
         "Assert",
     }
     slogValues = append(slogValues, args...)
+    fmt.Fprintf(os.Stderr, "ARGS: %+v\n", args)
 
 	for k, v := range assertData {
         slogValues = append(slogValues, k, v.Dump())
