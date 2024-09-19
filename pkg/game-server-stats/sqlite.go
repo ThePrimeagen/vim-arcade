@@ -128,7 +128,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?);`
     return err
 }
 
-func (j *Sqlite) Run(ctx context.Context) { }
+func (j *Sqlite) Run(ctx context.Context) {
+    <-ctx.Done()
+    j.db.Close()
+    j.logger.Warn("Sqlite finished running")
+}
 
 func (s *Sqlite) GetAllGameServerConfigs() ([]GameServerConfig, error) {
     var configs []GameServerConfig
