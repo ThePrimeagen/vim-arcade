@@ -7,16 +7,28 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"vim-arcade.theprimeagen.com/pkg/assert"
 )
 
 type JSONMemoryFile struct {
     Stats []GameServerConfig `json:"stats"`
 }
 
+func toBytes(j *JSONMemory) ([]byte, error) {
+    mem := JSONMemoryFile{Stats: j.stats}
+    return json.Marshal(mem)
+}
+
 type JSONMemory struct {
     file string
     stats []GameServerConfig
     mutex sync.Mutex
+    logger *slog.Logger
+}
+
+func getLogger() *slog.Logger {
+    return slog.Default().With("area", "JSONMemory")
 }
 
 func JSONMemoryFrom(path string, data JSONMemoryFile) (*JSONMemory, error) {
@@ -38,11 +50,17 @@ func NewJSONMemoryAndClear(path string) (*JSONMemory, error) {
     if err != nil {
         return nil, err
     }
-    return &JSONMemory{file: path}, nil
+    return &JSONMemory{file: path, logger: getLogger()}, nil
 }
 
-func NewJSONMemory(path string) JSONMemory {
-    return JSONMemory{file: path}
+func NewJSONMemory(path string) (*JSONMemory, error) {
+    if _, err := os.Stat(path); err != nil {
+        return NewJSONMemoryAndClear(path)
+    }
+    return &JSONMemory{
+        file: path,
+        logger: getLogger(),
+    }, nil
 }
 
 func (j *JSONMemory) Update(stat GameServerConfig) error {
@@ -54,9 +72,11 @@ func (j *JSONMemory) Update(stat GameServerConfig) error {
         }
     }
 
+    slog.Info("Update", "stat", stat, "update", update)
     if !update {
         j.stats = append(j.stats, stat)
     }
+    j.save()
     return nil
 }
 
@@ -70,9 +90,17 @@ func (j *JSONMemory) Run(ctx context.Context) {
             j.refresh()
 
         case <-ctx.Done():
+            slog.Warn("ctx done")
             break outer
         }
     }
+}
+
+func (j *JSONMemory) save() {
+    data, err := toBytes(j)
+    assert.NoError(err, "json storage serializing failed", "err", err)
+    err = os.WriteFile(j.file, data, 0644)
+    assert.NoError(err, "json storage writing failed", "err", err)
 }
 
 func (j *JSONMemory) refresh() {
@@ -107,10 +135,12 @@ func (j *JSONMemory) Iter() func(yield func(i int, s GameServerConfig) bool) {
 }
 
 func (j *JSONMemory) GetById(id string) *GameServerConfig {
+    var g *GameServerConfig
     for _, gs := range j.Iter() {
         if gs.Id == id {
-            return &gs
+            g = &gs
         }
     }
-    return nil
+    slog.Info("GetById", "id", id, "stat", g)
+    return g
 }

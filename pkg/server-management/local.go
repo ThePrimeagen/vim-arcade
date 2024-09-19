@@ -70,7 +70,7 @@ func (l *LocalServers) CreateNewServer(ctx context.Context) (string, error) {
     id++
 
     go func() {
-        err := cmdr.Run(append(getEnvVars(), fmt.Sprintf("ID=%d", id)))
+        err := cmdr.Run(append(getEnvVars(), fmt.Sprintf("ID=%d", outId)))
         if err != nil {
             l.logger.Error("unable to run cmdr", "err", err)
         }

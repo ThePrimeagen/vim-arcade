@@ -56,7 +56,9 @@ func (m *MatchMakingServer) handleNewConnection(ctx context.Context, conn net.Co
             assert.Never("unimplemented")
         }
 
+        m.logger.Info("waiting for server", "id", gameString)
         err = m.params.GameServer.WaitForReady(ctx, gameString)
+        m.logger.Info("server created", "id", gameString)
         assert.NoError(err, "unsure how this happened", "err", err)
     } else if err != nil {
         m.logger.Error("getting best server error", "error", err)

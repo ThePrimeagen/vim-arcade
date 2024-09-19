@@ -43,7 +43,7 @@ func colorizer(colorCode int, v string) string {
 type Handler struct {
 	h                slog.Handler
 	r                func([]string, slog.Attr) slog.Attr
-	b                *bytes.Buffer
+	buf              *bytes.Buffer
 	m                *sync.Mutex
 	writer           io.Writer
 	colorize         bool
@@ -55,11 +55,11 @@ func (h *Handler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &Handler{h: h.h.WithAttrs(attrs), b: h.b, r: h.r, m: h.m, writer: h.writer, colorize: h.colorize}
+	return &Handler{h: h.h.WithAttrs(attrs), buf: h.buf, r: h.r, m: h.m, writer: h.writer, colorize: h.colorize}
 }
 
 func (h *Handler) WithGroup(name string) slog.Handler {
-	return &Handler{h: h.h.WithGroup(name), b: h.b, r: h.r, m: h.m, writer: h.writer, colorize: h.colorize}
+	return &Handler{h: h.h.WithGroup(name), buf: h.buf, r: h.r, m: h.m, writer: h.writer, colorize: h.colorize}
 }
 
 func (h *Handler) computeAttrs(
@@ -68,7 +68,7 @@ func (h *Handler) computeAttrs(
 ) (map[string]any, error) {
 	h.m.Lock()
 	defer func() {
-		h.b.Reset()
+		h.buf.Reset()
 		h.m.Unlock()
 	}()
 	if err := h.h.Handle(ctx, r); err != nil {
@@ -76,7 +76,7 @@ func (h *Handler) computeAttrs(
 	}
 
 	var attrs map[string]any
-	err := json.Unmarshal(h.b.Bytes(), &attrs)
+	err := json.Unmarshal(h.buf.Bytes(), &attrs)
 	if err != nil {
 		return nil, fmt.Errorf("error when unmarshaling inner handler's Handle result: %w", err)
 	}
@@ -203,7 +203,7 @@ func New(handlerOptions *slog.HandlerOptions, options ...Option) *Handler {
 
 	buf := &bytes.Buffer{}
 	handler := &Handler{
-		b: buf,
+		buf: buf,
 		h: slog.NewJSONHandler(buf, &slog.HandlerOptions{
 			Level:       handlerOptions.Level,
 			AddSource:   handlerOptions.AddSource,
@@ -245,13 +245,13 @@ func WithOutputEmptyAttrs() Option {
 }
 
 func SetProgramLevelPrettyLogger() *slog.Logger {
-    // TODO configure logging
-    prettyHandler := NewHandler(&slog.HandlerOptions{
-        Level:       slog.LevelInfo,
-        AddSource:   false,
-        ReplaceAttr: nil,
-    })
-    logger := slog.New(prettyHandler)
-    slog.SetDefault(logger)
-    return logger
+	// TODO configure logging
+	prettyHandler := NewHandler(&slog.HandlerOptions{
+		Level:       slog.LevelInfo,
+		AddSource:   false,
+		ReplaceAttr: nil,
+	})
+	logger := slog.New(prettyHandler)
+	slog.SetDefault(logger)
+	return logger
 }
