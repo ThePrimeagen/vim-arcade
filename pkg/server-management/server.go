@@ -2,7 +2,7 @@ package servermanagement
 
 import "errors"
 
-var NO_BEST_SERVER = errors.New("no best server found")
+var NoBestServer = errors.New("no best server found")
 
 type ServerParams struct {
     MaxConnections int

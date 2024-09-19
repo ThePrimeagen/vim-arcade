@@ -105,3 +105,12 @@ func (j *JSONMemory) Iter() func(yield func(i int, s GameServerConfig) bool) {
 		}
 	}
 }
+
+func (j *JSONMemory) GetById(id string) *GameServerConfig {
+    for _, gs := range j.Iter() {
+        if gs.Id == id {
+            return &gs
+        }
+    }
+    return nil
+}

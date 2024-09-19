@@ -5,16 +5,16 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"os/signal"
-	"time"
 
 	"github.com/joho/godotenv"
+	"vim-arcade.theprimeagen.com/pkg/ctrlc"
+	"vim-arcade.theprimeagen.com/pkg/dummy"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
-	"vim-arcade.theprimeagen.com/pkg/td"
+	prettylog "vim-arcade.theprimeagen.com/pkg/pretty-log"
 )
 
 func getId() string {
-    return "123-local"
+    return os.Getenv("ID")
 }
 
 func getHostAndPort() (string, int) {
@@ -39,26 +39,19 @@ func getFreePort() (port int, err error) {
 	return
 }
 
-func handleCtrlC(cancel context.CancelFunc) {
-    c := make(chan os.Signal, 1)
-    signal.Notify(c, os.Interrupt)
-    go func() {
-        <-c
-        cancel()
-        time.Sleep(time.Millisecond * 250)
-        // Run Cleanup
-        os.Exit(1)
-    }()
-}
-
 func main() {
     godotenv.Load()
+
+    prettylog.SetProgramLevelPrettyLogger()
+    ll :=  slog.Default().With("area", "dummy-server")
 
     // TODO make this... well better?
     // Right now we have no local vs flyio stuff... iots just me programming
     db := gameserverstats.NewJSONMemory(os.Getenv("IN_MEMORY_JSON"))
     host, port := getHostAndPort()
+
     config := gameserverstats.GameServerConfig {
+        State: gameserverstats.GSStateReady,
         Connections: 0,
         Load: 0,
         Id: getId(),
@@ -66,19 +59,21 @@ func main() {
         Port: port,
     }
 
-    server := td.NewTowerDefense(&db, config)
+    ll.Info("creating server", "port", port, "host", host)
+    server := dummy.NewDummyGameServer(&db, config)
     ctx, cancel := context.WithCancel(context.Background())
-    handleCtrlC(cancel)
+    ctrlc.HandleCtrlC(cancel)
 
     defer server.Close()
     go func () {
         err := server.Run(ctx)
         if err != nil {
-            slog.Error("Game Server Run came returned with an error", "error", err)
+            ll.Error("Game Server Run came returned with an error", "error", err)
             cancel()
         }
     }()
 
     server.Wait()
     cancel()
+    ll.Error("dummy game server finished")
 }
