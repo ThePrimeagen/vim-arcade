@@ -20,10 +20,7 @@ func main() {
     assert.Assert(port > 0, "expected port to be provided", "port", port)
 
     // TODO logging customization through some sort of config/env
-    prettylog.SetProgramLevelPrettyLogger(prettylog.PrettyLoggerParams{
-        Out: os.Stderr,
-        Level: slog.LevelDebug,
-    })
+    prettylog.SetProgramLevelPrettyLogger(prettylog.NewParams(os.Stderr))
 
     client := dummy.NewDummyClient("", uint16(port))
 

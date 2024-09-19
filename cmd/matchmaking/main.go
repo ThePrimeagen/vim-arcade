@@ -22,10 +22,7 @@ func main() {
         return
     }
 
-    prettylog.SetProgramLevelPrettyLogger(prettylog.PrettyLoggerParams{
-        Out: os.Stderr,
-        Level: slog.LevelDebug,
-    })
+    prettylog.SetProgramLevelPrettyLogger(prettylog.NewParams(os.Stderr))
     slog.SetDefault(slog.Default().With("process", "MatchMaking"))
     slog.Error("Hello world")
 

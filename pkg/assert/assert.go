@@ -12,6 +12,11 @@ import (
 type AssertData interface {
     Dump() string
 }
+type AssertFlush interface {
+    Flush()
+}
+
+var flushes []AssertFlush = []AssertFlush{}
 var assertData map[string]AssertData = map[string]AssertData{}
 var writer io.Writer
 
@@ -23,11 +28,23 @@ func RemoveAssertData(key string) {
 	delete(assertData, key)
 }
 
+func AddAssertFlush(flusher AssertFlush) {
+    flushes = append(flushes, flusher)
+}
+
 func ToWriter(w io.Writer) {
 	writer = w
 }
 
 func runAssert(msg string, args ...interface{}) {
+    // There is a bit of a issue here.  if you flush you cannot assert
+    // cannot be reentrant
+    // TODO I am positive i could create some sort of latching that prevents the
+    // reentrant problem
+    for _, f := range flushes {
+        f.Flush()
+    }
+
     slogValues := []interface{}{
         "msg",
         msg,
