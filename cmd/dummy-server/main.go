@@ -19,7 +19,10 @@ func getId() string {
 func main() {
     godotenv.Load()
 
-    prettylog.SetProgramLevelPrettyLogger()
+    prettylog.SetProgramLevelPrettyLogger(prettylog.PrettyLoggerParams{
+        Out: os.Stderr,
+        Level: slog.LevelDebug,
+    })
     slog.SetDefault(slog.Default().With("process", "DummyServer"))
 
     ll :=  slog.Default().With("area", "dummy-server")
@@ -27,7 +30,7 @@ func main() {
 
     // TODO make this... well better?
     // Right now we have no local vs flyio stuff... iots just me programming
-    db := gameserverstats.NewSqlite("file:///tmp/sim.db")
+    db := gameserverstats.NewSqlite("file:/tmp/sim.db")
     db.SetSqliteModes()
     host, port := dummy.GetHostAndPort()
 

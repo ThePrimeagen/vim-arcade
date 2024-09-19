@@ -19,11 +19,14 @@ type MatchMakingServer struct {
 	ready    bool
 }
 
+// TODO consider all of these operations with game type
+// there will possibly be a day where i have more than one game type
 type GameServer interface {
 	GetBestServer() (string, error)
 	CreateNewServer(ctx context.Context) (string, error)
 	WaitForReady(ctx context.Context, id string) error
 	GetConnectionString(id string) (string, error)
+    //ListServers() []gameserverstats.GameServerConfig
 	String() string
 }
 
@@ -91,14 +94,23 @@ func innerListenForConnections(listener net.Listener) <-chan net.Conn {
 	return ch
 }
 
+func (m *MatchMakingServer) checkForDeadInstances() {
+    //m.Params.GameServer.ListServers()
+}
+
 func (m *MatchMakingServer) listenForConnections(ctx context.Context, listener net.Listener) {
 	conns := innerListenForConnections(listener)
 
+    // TODO Configurable
+    timer := time.NewTicker(time.Second * 3)
 
     m.logger.Warn("listening for connections")
+
     outer:
 	for {
 		select {
+        case <-timer.C:
+            m.checkForDeadInstances()
 		case <-ctx.Done():
 			m.logger.Warn("context done")
 			break outer

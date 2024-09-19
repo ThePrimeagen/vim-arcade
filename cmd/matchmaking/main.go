@@ -22,7 +22,10 @@ func main() {
         return
     }
 
-    prettylog.SetProgramLevelPrettyLogger()
+    prettylog.SetProgramLevelPrettyLogger(prettylog.PrettyLoggerParams{
+        Out: os.Stderr,
+        Level: slog.LevelDebug,
+    })
     slog.SetDefault(slog.Default().With("process", "MatchMaking"))
     slog.Error("Hello world")
 
@@ -34,7 +37,7 @@ func main() {
         os.Exit(1)
     }
 
-    db := gameserverstats.NewSqlite("file:///tmp/sim.db")
+    db := gameserverstats.NewSqlite("file:/tmp/sim.db")
     db.SetSqliteModes()
     local := servermanagement.NewLocalServers(db, servermanagement.ServerParams{
         MaxLoad: 0.9,

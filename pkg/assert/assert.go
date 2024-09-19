@@ -1,9 +1,11 @@
 package assert
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"runtime/debug"
 )
 
 // TODO using slog for logging
@@ -29,6 +31,8 @@ func runAssert(msg string, args ...interface{}) {
     slogValues := []interface{}{
         "msg",
         msg,
+        "area",
+        "Assert",
     }
     slogValues = append(slogValues, args...)
 
@@ -36,7 +40,11 @@ func runAssert(msg string, args ...interface{}) {
         slogValues = append(slogValues, k, v.Dump())
 	}
 
-    slog.Error("Assert", slogValues...)
+    fmt.Fprintf(os.Stderr, "ASSERT\n")
+    for i := 0; i < len(slogValues); i += 2 {
+        fmt.Fprintf(os.Stderr, "   %s=%v\n", slogValues[i], slogValues[i + 1])
+    }
+    fmt.Fprintln(os.Stderr, string(debug.Stack()))
     os.Exit(1)
 }
 
