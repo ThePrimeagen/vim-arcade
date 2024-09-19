@@ -1,19 +1,19 @@
 package assert
 
 import (
-	"encoding/json"
-	"fmt"
 	"io"
-	"log"
 	"log/slog"
+	"os"
 )
 
 // TODO using slog for logging
-
-var assertData map[string]any = map[string]any{}
+type AssertData interface {
+    Dump() string
+}
+var assertData map[string]AssertData = map[string]AssertData{}
 var writer io.Writer
 
-func AddAssertData(key string, value any) {
+func AddAssertData(key string, value AssertData) {
 	assertData[key] = value
 }
 
@@ -25,55 +25,19 @@ func ToWriter(w io.Writer) {
 	writer = w
 }
 
-func stringify(item any) string {
-	if item == nil {
-		return "nil"
-	}
+func runAssert(msg string, args ...interface{}) {
+    slogValues := []interface{}{
+        "msg",
+        msg,
+    }
+    slogValues = append(slogValues, args...)
 
-	switch t := item.(type) {
-	case string:
-		return t
-	case []byte:
-		return string(t)
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return fmt.Sprintf("%d", item)
-	default:
-		d, err := json.Marshal(t)
-		if err != nil {
-			return string(d)
-		}
-	}
-	return fmt.Sprintf("%s", item)
-}
-
-func runAssert(msg string, args ...any) {
 	for k, v := range assertData {
-		if writer != nil {
-			fmt.Fprintf(writer, "%s=%s\n", k, stringify(v))
-		} else {
-			slog.Error("context", "key", k, "value", stringify(v))
-		}
+        slogValues = append(slogValues, k, v.Dump())
 	}
 
-	if writer != nil {
-		fmt.Fprintf(writer, "%s: ", msg)
-	} else {
-		fmt.Printf("%s: ", msg)
-	}
-
-	for _, item := range args {
-		if writer != nil {
-			fmt.Fprintf(writer, "%s: ", stringify(item))
-		} else {
-			fmt.Printf("%v ", stringify(item))
-		}
-	}
-
-	if writer == nil {
-		log.Fatal("runtime assert failure")
-	} else {
-		log.Fatal("runtime assert, dumped to provided file")
-	}
+    slog.Error("Assert", slogValues...)
+    os.Exit(1)
 }
 
 // TODO Think about passing around a context for debugging purposes

@@ -33,6 +33,7 @@ func createMatchMaking() (servermanagement.LocalServers, *gameserverstats.JSONMe
 
 func main() {
     prettylog.SetProgramLevelPrettyLogger()
+    slog.SetDefault(slog.Default().With("process", "sim"))
     logger := slog.Default().With("area", "TestMatchMaking")
     local, db, mm := createMatchMaking()
     ctx, cancel := context.WithCancel(context.Background())
@@ -45,11 +46,12 @@ func main() {
         }
         cancel()
     }()
+    go db.Run(ctx)
     go ctrlc.HandleCtrlC(cancel)
     mm.WaitForReady(ctx)
     s := sim.NewSimulation(sim.SimulationParams{
         Seed: 69,
-        Rounds: 100,
+        Rounds: 1000,
         Host: "",
         Port: uint16(mm.Params.Port),
         Stats: db,

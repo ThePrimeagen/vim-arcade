@@ -43,9 +43,13 @@ func readLines(reader *bufio.Reader, out chan<- string) {
 }
 
 func NewDummyGameServer(db gameserverstats.GSSRetriever, stats gameserverstats.GameServerConfig) *DummyGameServer {
-	db.Update(stats)
+    logger := slog.Default().With("area", fmt.Sprintf("GameServer-%s", os.Getenv("ID")))
+    logger.Warn("new dummy game server", "ID", os.Getenv("ID"))
+
+    err := db.Update(stats)
+    assert.NoError(err, "unable to save the stats of the dummy game server", err)
 	return &DummyGameServer{
-		logger: slog.Default().With("area", fmt.Sprintf("GameServer-%s", os.Getenv("ID"))),
+		logger: logger,
 		stats:  stats,
 		db:     db,
 		done:   make(chan struct{}, 1),
@@ -58,7 +62,7 @@ func innerListenForConnections(listener net.Listener) <-chan net.Conn {
 	go func() {
 		for {
 			c, err := listener.Accept()
-			assert.NoError(err, "tcp listener has failed to accept a connection", "err", err)
+			assert.NoError(err, "DummyGameServer was unable to accept connection", "err", err)
 			ch <- c
 		}
 	}()
@@ -100,8 +104,12 @@ func (g *DummyGameServer) handleConnection(ctx context.Context, conn net.Conn) {
 }
 
 func (g *DummyGameServer) Run(ctx context.Context) error {
+    g.logger.Warn("dummy-server#Run started...")
 	portStr := fmt.Sprintf(":%d", g.stats.Port)
 	listener, err := net.Listen("tcp4", portStr)
+    g.logger.Warn("dummy-server#Run running...")
+
+
 	if err != nil {
 		return err
 	}

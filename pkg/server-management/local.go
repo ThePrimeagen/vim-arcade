@@ -51,7 +51,7 @@ func (l *LocalServers) GetBestServer() (string, error) {
         return "", NoBestServer
     }
 
-    return bestServer.Addr(), nil
+    return bestServer.Id, nil
 }
 
 var id = 0
@@ -60,11 +60,11 @@ func (l *LocalServers) CreateNewServer(ctx context.Context) (string, error) {
     cmdr := cmd.NewCmder("go", ctx).
         AddVArgv([]string{"run", "./cmd/dummy-server/main.go"}).
         WithOutFn(func(b []byte) (int, error) {
-            l.logger.Info("local server stdout", "stdout", string(b), "id", outId)
+            l.logger.Info(string(b))
             return len(b), nil
         }).
         WithErrFn(func(b []byte) (int, error) {
-            l.logger.Error("local server stderr", "stderr", string(b), "id", outId)
+            l.logger.Error(string(b))
             return len(b), nil
         })
 
@@ -86,6 +86,7 @@ func (l *LocalServers) WaitForReady(ctx context.Context, id string) error {
     for {
         time.Sleep(time.Millisecond * 50)
         gs := l.stats.GetById(id)
+        l.logger.Info("WaitForReady", "id", id, "gs", gs)
         if gs != nil {
             if gs.State == gameserverstats.GSStateReady {
                 return nil

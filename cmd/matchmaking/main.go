@@ -24,6 +24,9 @@ func main() {
     }
 
     prettylog.SetProgramLevelPrettyLogger()
+    slog.SetDefault(slog.Default().With("process", "MatchMaking"))
+    slog.Error("Hello world")
+
     port, err := strconv.Atoi(os.Getenv("MM_PORT"))
     logger := slog.Default().With("area", "MatchMakingMain")
 
