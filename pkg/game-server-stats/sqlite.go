@@ -35,6 +35,8 @@ func (s *Sqlite) CreateGameServerConfigs() error {
         id TEXT PRIMARY KEY,
         state TEXT,
         connections INTEGER,
+        connections_added INTEGER,
+        connections_removed INTEGER,
         load REAL,
         host TEXT,
         port INTEGER
@@ -104,24 +106,24 @@ FROM GameServerConfigs;`
     return count
 }
 
-func (s *Sqlite) GetTotalConnectionCount() int {
-    sumQuery := `SELECT COALESCE(SUM(connections), 0)
+func (s *Sqlite) GetTotalConnectionCount() GameServecConfigConnectionStats {
+    sumQuery := `SELECT TOTAL(connections) AS connections, TOTAL(connections_added) AS connections_added, TOTAL(connections_removed) AS connections_removed
 FROM GameServerConfigs;`
 
-    var count int
-    err := s.db.Get(&count, sumQuery)
+    var counts GameServecConfigConnectionStats
+    err := s.db.Get(&counts, sumQuery)
     assert.NoError(err, "unable to get total connection count", "err", err)
 
-    return count
+    return counts
 }
 
 func (s *Sqlite) Update(stat GameServerConfig) error {
     s.logger.Info("Updating", "stat", stat)
-    query := `INSERT OR REPLACE INTO GameServerConfigs (id, state, connections, load, host, port)
-VALUES (?, ?, ?, ?, ?, ?);`
+    query := `INSERT OR REPLACE INTO GameServerConfigs (id, state, connections, connections_added, connections_removed, load, host, port)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);`
 
     // TODO probably don't need to update every
-    _, err := s.db.Exec(query, stat.Id, stat.State, stat.Connections, stat.Load, stat.Host, stat.Port)
+    _, err := s.db.Exec(query, stat.Id, stat.State, stat.Connections, stat.ConnectionsAdded, stat.ConnectionsRemoved, stat.Load, stat.Host, stat.Port)
 
     return err
 }
