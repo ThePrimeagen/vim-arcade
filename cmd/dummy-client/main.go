@@ -27,6 +27,6 @@ func main() {
         return
     }
 
-    client.Wait()
+    client.WaitForDone()
 }
 

@@ -63,6 +63,21 @@ func NewJSONMemory(path string) (*JSONMemory, error) {
     }, nil
 }
 
+func (j *JSONMemory) GetServerCount() int {
+    j.mutex.Lock()
+    count := len(j.stats)
+    j.mutex.Unlock()
+    return count
+}
+
+func (j *JSONMemory) GetConnectionCount() int {
+    count := 0
+    for _, s := range j.Iter() {
+        count += s.Connections
+    }
+    return count
+}
+
 func (j *JSONMemory) Update(stat GameServerConfig) error {
     update := false
     for i, s := range j.Iter() {

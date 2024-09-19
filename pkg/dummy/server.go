@@ -72,6 +72,7 @@ func (g *DummyGameServer) incConnections(amount int) {
     defer g.mutex.Unlock()
 
 	g.stats.Connections += amount
+	g.stats.Load += float32(amount) * 0.05
     err := g.db.Update(g.stats)
     assert.NoError(err, "failed while writing to the database", "err", err)
 }
@@ -114,7 +115,7 @@ func (g *DummyGameServer) Run(ctx context.Context) error {
 			break outer
 		case c := <-ch:
             g.logger.Info("new connection")
-			g.handleConnection(ctx, c)
+			go g.handleConnection(ctx, c)
 		}
 	}
 	g.done <- struct{}{}

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log/slog"
-	"net"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -18,28 +17,6 @@ func getId() string {
     return os.Getenv("ID")
 }
 
-func getHostAndPort() (string, int) {
-
-    port, err := getFreePort()
-    if err != nil {
-        port = 42069
-    }
-    return "0.0.0.0", port
-}
-
-// GetFreePort asks the kernel for a free open port that is ready to use.
-func getFreePort() (port int, err error) {
-	var a *net.TCPAddr
-	if a, err = net.ResolveTCPAddr("tcp", "localhost:0"); err == nil {
-		var l *net.TCPListener
-		if l, err = net.ListenTCP("tcp", a); err == nil {
-			defer l.Close()
-			return l.Addr().(*net.TCPAddr).Port, nil
-		}
-	}
-	return
-}
-
 func main() {
     godotenv.Load()
 
@@ -50,7 +27,7 @@ func main() {
     // Right now we have no local vs flyio stuff... iots just me programming
     db, err := gameserverstats.NewJSONMemory(os.Getenv("IN_MEMORY_JSON"))
     assert.NoError(err, "the json database could not be created", "err", err)
-    host, port := getHostAndPort()
+    host, port := dummy.GetHostAndPort()
 
     config := gameserverstats.GameServerConfig {
         State: gameserverstats.GSStateReady,

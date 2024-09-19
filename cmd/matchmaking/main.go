@@ -17,7 +17,12 @@ import (
 
 
 func main() {
-    godotenv.Load()
+    err := godotenv.Load()
+    if err != nil {
+        slog.Error("unable to load env", "err", err)
+        return
+    }
+
     prettylog.SetProgramLevelPrettyLogger()
     port, err := strconv.Atoi(os.Getenv("MM_PORT"))
     logger := slog.Default().With("area", "MatchMakingMain")
@@ -31,7 +36,6 @@ func main() {
     assert.NoError(err, "the json database could not be created", "err", err)
 
     local := servermanagement.NewLocalServers(db, servermanagement.ServerParams{
-        MaxConnections: 10,
         MaxLoad: 0.9,
     })
 

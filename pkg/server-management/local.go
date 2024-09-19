@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"vim-arcade.theprimeagen.com/pkg/cmd"
@@ -38,8 +39,8 @@ func (l *LocalServers) GetBestServer() (string, error) {
     found := false
 
     for _, s := range l.stats.Iter() {
-        if s.Connections < l.params.MaxConnections {
-            if found && bestServer.Connections < s.Connections || !found {
+        if s.Load < l.params.MaxLoad {
+            if found && bestServer.Load < s.Load || !found {
                 bestServer = s;
                 found = true
             }
@@ -135,4 +136,13 @@ func (l *LocalServers) Close() {
 
 func (l *LocalServers) Ready() {
     // TODO i should maybe create one server IF there are no servers
+}
+
+func (l *LocalServers) String() string {
+    servers := []string{}
+    for i, s := range l.stats.Iter() {
+        servers = append(servers, fmt.Sprintf("%d: %s", i, s.String()))
+    }
+
+    return strings.Join(servers, "\n")
 }
