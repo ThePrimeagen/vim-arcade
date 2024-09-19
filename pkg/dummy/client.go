@@ -11,6 +11,11 @@ import (
 	"vim-arcade.theprimeagen.com/pkg/assert"
 )
 
+type hostAndPort struct {
+	host string
+	port uint16
+}
+
 type DummyClient struct {
 	logger *slog.Logger
 	host   string
@@ -51,10 +56,32 @@ func (d *DummyClient) Write(data []byte) error {
 	return err
 }
 
-func (d *DummyClient) Connect(ctx context.Context) error {
-	d.logger.Info("connecting")
+func (d *DummyClient) connectToMatchMaking(ctx context.Context) hostAndPort {
+	d.logger.Info("connect to matchmaking")
 	conn, err := net.Dial("tcp4", fmt.Sprintf("%s:%d", d.host, d.port))
 	assert.NoError(err, "could not connect to server", "error", err)
+
+	data := make([]byte, 1000, 1000)
+	n, err := conn.Read(data)
+	assert.NoError(err, "client could not read from match making server", "err", err)
+	data = data[0:n]
+
+	parts := strings.Split(string(data), ":")
+	assert.Assert(len(parts) == 2, "malformed string from server", "fromServer", string(data))
+
+	port, err := strconv.Atoi(parts[1])
+	assert.NoError(err, "port was not a number", "err", err)
+
+	return hostAndPort{
+		port: uint16(port),
+		host: parts[0],
+	}
+}
+
+func (d *DummyClient) Connect(ctx context.Context) error {
+    hap := d.connectToMatchMaking(ctx)
+	conn, err := net.Dial("tcp4", fmt.Sprintf("%s:%d", hap.host, hap.port))
+	assert.NoError(err, "client could not connect to the game server", "err", err)
 
 	go func() {
 		data := make([]byte, 1000, 1000)
@@ -63,7 +90,7 @@ func (d *DummyClient) Connect(ctx context.Context) error {
 			// probably not?
 			n, err := conn.Read(data)
 			if err != nil {
-                d.logger.Error("connection read error", "err", err)
+				d.logger.Error("connection read error", "err", err)
 				break
 			}
 
