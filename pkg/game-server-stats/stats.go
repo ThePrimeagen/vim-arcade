@@ -13,18 +13,18 @@ const (
 )
 
 type GameServerConfig struct {
-    State State
+    State State `db:"state"`
 
-	Id string
+    Id string `db:"id"`
 
-	Connections int
+    Connections int `db:"connections"`
 
 	// TODO possible?
-	Load float32
+    Load float32 `db:"load"`
 
-    Host string
+    Host string `db:"host"`
 
-    Port int
+    Port int `db:"port"`
 }
 
 func stateToString(state State) string {
@@ -51,9 +51,10 @@ func (g *GameServerConfig) Addr() string {
 // TODO I don't know what to call this thing...
 type GSSRetriever interface {
     GetById(string) *GameServerConfig
-    Iter() func(yield func(i int, s GameServerConfig) bool)
+    GetAllGameServerConfigs() ([]GameServerConfig, error)
     Run(ctx context.Context)
+    GetServersByUtilization(maxLoad float64) []GameServerConfig
     Update(stats GameServerConfig) error
     GetServerCount() int
-    GetConnectionCount() int
+    GetTotalConnectionCount() int
 }

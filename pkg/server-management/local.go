@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"vim-arcade.theprimeagen.com/pkg/assert"
 	"vim-arcade.theprimeagen.com/pkg/cmd"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
 )
@@ -35,23 +36,14 @@ func NewLocalServers(stats gameserverstats.GSSRetriever, params ServerParams) Lo
 }
 
 func (l *LocalServers) GetBestServer() (string, error) {
-    var bestServer gameserverstats.GameServerConfig
-    found := false
+    servers := l.stats.GetServersByUtilization(float64(l.params.MaxLoad))
+    l.logger.Info("GetBestServer", "found servers", len(servers))
 
-    for _, s := range l.stats.Iter() {
-        if s.Load < l.params.MaxLoad {
-            if found && bestServer.Load < s.Load || !found {
-                bestServer = s;
-                found = true
-            }
-        }
-    }
-
-    if !found {
+    if len(servers) == 0 {
         return "", NoBestServer
     }
 
-    return bestServer.Id, nil
+    return servers[0].Id, nil
 }
 
 var id = 0
@@ -85,6 +77,12 @@ func (l *LocalServers) CreateNewServer(ctx context.Context) (string, error) {
 func (l *LocalServers) WaitForReady(ctx context.Context, id string) error {
     for {
         time.Sleep(time.Millisecond * 50)
+        stats, err := l.stats.GetAllGameServerConfigs()
+        assert.NoError(err, "unable to get the stats", "err", err)
+        for _, s := range stats {
+            l.logger.Info("WaitForReady#getStats", "state", s.State, "id", s.Id, "connections", s.Connections, "port", s.Port)
+        }
+
         gs := l.stats.GetById(id)
         l.logger.Info("WaitForReady", "id", id, "gs", gs)
         if gs != nil {
@@ -141,9 +139,9 @@ func (l *LocalServers) Ready() {
 
 func (l *LocalServers) String() string {
     servers := []string{}
-    for i, s := range l.stats.Iter() {
-        servers = append(servers, fmt.Sprintf("%d: %s", i, s.String()))
+    gameServers := l.stats.GetServersByUtilization(1.5)
+    for _, gs := range gameServers {
+        servers = append(servers, gs.String())
     }
-
     return strings.Join(servers, "\n")
 }
