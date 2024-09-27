@@ -65,14 +65,14 @@ func (m *MatchMakingServer) handleNewConnection(ctx context.Context, conn net.Co
 		m.logger.Info("waiting for server", "id", gameId)
 		err = m.Params.GameServer.WaitForReady(ctx, gameId)
 		m.logger.Info("server created", "id", gameId)
-		assert.NoError(err, "unsure how this happened", "err", err)
+		assert.NoError(err, "unsure how this happened")
 	} else if err != nil {
 		m.logger.Error("getting best server error", "error", err)
 		return
 	}
 
 	gs, err := m.Params.GameServer.GetConnectionString(gameId)
-	assert.NoError(err, "game server id somehow wasn't found", "err", err)
+	assert.NoError(err, "game server id somehow wasn't found")
     assert.Assert(gs != "", "game server gameString did not produce a host:port pair", "id", gameId)
 
 	// TODO probably better to just get a full server information
@@ -90,10 +90,10 @@ func innerListenForConnections(listener net.Listener, ctx context.Context) <-cha
             select {
             case <-ctx.Done():
                 if nerr, ok := err.(*net.OpError); ok && nerr.Err.Error() != "use of closed network connection" {
-                    assert.NoError(err, "matchmaking was unable to accept connection", "err", err)
+                    assert.NoError(err, "matchmaking was unable to accept connection")
                 }
             default:
-                assert.NoError(err, "matchmaking was unable to accept connection", "err", err)
+                assert.NoError(err, "matchmaking was unable to accept connection")
             }
 			ch <- c
 		}
@@ -166,8 +166,12 @@ func (m *MatchMakingServer) WaitForReady(ctx context.Context) {
     outer:
     for {
         select {
+        // TODO wtf was i thinking here?
+        // PORQUE CHANNEL
         case <-time.NewTimer(time.Millisecond * 50).C:
-            break outer
+            if m.ready {
+                break outer
+            }
         case <-ctx.Done():
             break outer
         }

@@ -10,6 +10,7 @@ type State int
 const (
 	GSStateInitializing State = iota
 	GSStateReady
+	GSStateIdle
 	GSStateClosed
 )
 
@@ -28,6 +29,8 @@ type GameServerConfig struct {
 	ConnectionsAdded   int `db:"connections_added"`
 	ConnectionsRemoved int `db:"connections_removed"`
 
+	LastUpdateMS int64 `db:"last_updated"`
+
 	// TODO possible?
 	Load float32 `db:"load"`
 
@@ -42,6 +45,8 @@ func stateToString(state State) string {
 		return "init"
 	case GSStateReady:
 		return "ready"
+	case GSStateIdle:
+		return "idle"
 	case GSStateClosed:
 		return "closed"
 	default:
@@ -65,5 +70,5 @@ type GSSRetriever interface {
 	GetServersByUtilization(maxLoad float64) []GameServerConfig
 	Update(stats GameServerConfig) error
 	GetServerCount() int
-    GetTotalConnectionCount() GameServecConfigConnectionStats
+	GetTotalConnectionCount() GameServecConfigConnectionStats
 }

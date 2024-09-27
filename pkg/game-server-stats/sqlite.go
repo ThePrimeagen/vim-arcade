@@ -18,7 +18,7 @@ WHERE type='table' AND name='GameServerConfigs';`
 
     var tableName string
     err := db.Get(&tableName, query)
-    assert.NoError(err, "error while checking for the table existing", "err", err)
+    assert.NoError(err, "error while checking for the table existing")
     return tableName == "GameServerConfigs"
 }
 
@@ -30,6 +30,8 @@ func deleteTable(db *sqlx.DB) error {
 
 // createTable creates the GameServerConfigs table
 func (s *Sqlite) CreateGameServerConfigs() error {
+    // TODO validate this: apparently INTEGER for last_updated makes life
+    // easier for calculations??
     query := `
     CREATE TABLE GameServerConfigs (
         id TEXT PRIMARY KEY,
@@ -37,6 +39,7 @@ func (s *Sqlite) CreateGameServerConfigs() error {
         connections INTEGER,
         connections_added INTEGER,
         connections_removed INTEGER,
+        last_updated INTERGER,
         load REAL,
         host TEXT,
         port INTEGER
@@ -75,7 +78,7 @@ func ClearSQLiteFiles(path string) {
 func NewSqlite(path string) *Sqlite {
     logger := getLogger()
     db, err := sqlx.Open("libsql", path)
-    assert.NoError(err, "failed to open db", "err", err)
+    assert.NoError(err, "failed to open db")
     return &Sqlite{
         db: db,
         logger: logger,
@@ -86,7 +89,7 @@ func (s *Sqlite) setPragma(name string, value string) {
     row := s.db.QueryRowx(fmt.Sprintf("PRAGMA %s=%s;", name, value))
     var v string
     err := row.Scan(&v)
-    assert.NoError(err, "could not scan pragma row result", "err", err, "name", name, "value", value)
+    assert.NoError(err, "could not scan pragma row result", "name", name, "value", value)
     s.logger.Warn(name, "value", v)
 }
 
@@ -101,7 +104,7 @@ FROM GameServerConfigs;`
 
     var count int
     err := s.db.Get(&count, selectQuery)
-    assert.NoError(err, "unable to get server count", "err", err)
+    assert.NoError(err, "unable to get server count")
 
     return count
 }
@@ -112,15 +115,15 @@ FROM GameServerConfigs;`
 
     var counts GameServecConfigConnectionStats
     err := s.db.Get(&counts, sumQuery)
-    assert.NoError(err, "unable to get total connection count", "err", err)
+    assert.NoError(err, "unable to get total connection count")
 
     return counts
 }
 
 func (s *Sqlite) Update(stat GameServerConfig) error {
     s.logger.Info("Updating", "stat", stat)
-    query := `INSERT OR REPLACE INTO GameServerConfigs (id, state, connections, connections_added, connections_removed, load, host, port)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);`
+    query := `INSERT OR REPLACE INTO GameServerConfigs (id, state, connections, connections_added, connections_removed, load, host, port, last_updated)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now'));`
 
     // TODO probably don't need to update every
     _, err := s.db.Exec(query, stat.Id, stat.State, stat.Connections, stat.ConnectionsAdded, stat.ConnectionsRemoved, stat.Load, stat.Host, stat.Port)

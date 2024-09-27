@@ -1,10 +1,12 @@
-package ioutils
+package utils
 
 import (
 	"context"
 	"errors"
 	"io"
 )
+
+const DateTimeFormatForSQLite = "2006-01-02 15:04:05"
 
 type ContextReader struct {
     Err chan error

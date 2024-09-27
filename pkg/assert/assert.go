@@ -86,6 +86,7 @@ func Never(msg string, data ...any) {
 
 func NoError(err error, msg string, data ...any) {
 	if err != nil {
+        data = append(data, "error", err)
 		runAssert(msg, data...)
 	}
 }
