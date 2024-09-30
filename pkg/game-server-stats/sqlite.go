@@ -163,10 +163,10 @@ WHERE id=?;`, id)
 
 func (s *Sqlite) GetServersByUtilization(maxLoad float64) []GameServerConfig {
     var g []GameServerConfig
-    s.db.Select(&g, `SELECT *
+    s.db.Select(&g, fmt.Sprintf(`SELECT *
 FROM GameServerConfigs
-WHERE load < ?
-ORDER BY load DESC;`, maxLoad)
+WHERE load < ? AND state == %d
+ORDER BY load DESC;`, GSStateReady), maxLoad)
     s.logger.Info("GetServersByUtilization", "maxLoad", maxLoad, "count", len(g))
     return g
 }

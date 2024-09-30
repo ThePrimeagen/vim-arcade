@@ -49,6 +49,7 @@ func (m *MatchMakingServer) handleNewConnection(ctx context.Context, conn net.Co
 	}()
 
 	gameId, err := m.Params.GameServer.GetBestServer()
+
 	if errors.Is(err, servermanagement.NoBestServer) {
 		// TODO mutex lock
 		// - great if i scale vertically the match making server
