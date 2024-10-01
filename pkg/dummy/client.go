@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
-	ioutils "vim-arcade.theprimeagen.com/pkg/io-utils"
+	"vim-arcade.theprimeagen.com/pkg/utils"
 )
 
 type ClientState int
@@ -109,23 +109,23 @@ func (d *DummyClient) Write(data []byte) error {
 	return err
 }
 
-// TODO probably do something with context, maybe ioutils is context done
+// TODO probably do something with context, maybe utils is context done
 func (d *DummyClient) connectToMatchMaking(ctx context.Context) hostAndPort {
 	connStr := fmt.Sprintf("%s:%d", d.host, d.port)
 	d.logger.Info("connect to matchmaking", "conn", connStr)
 	conn, err := net.Dial("tcp4", connStr)
-	assert.NoError(err, "could not connect to server", "error", err)
+	assert.NoError(err, "could not connect to server")
 
 	data := make([]byte, 1000, 1000)
 	n, err := conn.Read(data)
-	assert.NoError(err, "client could not read from match making server", "err", err)
+	assert.NoError(err, "client could not read from match making server")
 	data = data[0:n]
 
 	parts := strings.Split(string(data), ":")
 	assert.Assert(len(parts) == 2, "malformed string from server", "fromServer", string(data))
 
 	port, err := strconv.Atoi(parts[1])
-	assert.NoError(err, "port was not a number", "err", err)
+	assert.NoError(err, "port was not a number")
 
 	return hostAndPort{
 		port: uint16(port),
@@ -141,13 +141,13 @@ func (d *DummyClient) Connect(ctx context.Context) error {
     d.gsPort = hap.port
 	d.logger.Info("client connecting to game server", "host", hap.host, "port", hap.port)
 	conn, err := net.Dial("tcp4", fmt.Sprintf("%s:%d", hap.host, hap.port))
-	assert.NoError(err, "client could not connect to the game server", "err", err)
+    assert.NoError(err, "client could not connect to the game server")
 	d.State = CSConnected
 	d.conn = conn
 	d.logger.Info("client connected to game server", "host", d.host, "port", d.port)
 	d.ready <- struct{}{}
 
-	ctxReader := ioutils.NewContextReader(ctx)
+	ctxReader := utils.NewContextReader(ctx)
 	go ctxReader.Read(conn)
 
 	go func() {

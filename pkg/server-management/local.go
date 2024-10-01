@@ -19,11 +19,10 @@ type LocalServers struct {
 	params  ServerParams
 	servers []*cmd.Cmder
 
-    load        float32
-    connections float32
+	load        float32
+	connections float32
 
 	lastTimeNoConnections bool
-
 }
 
 func getEnvVars() []string {
@@ -58,14 +57,17 @@ var id = 0
 
 func (l *LocalServers) CreateNewServer(ctx context.Context) (string, error) {
 	outId := id
+    // TODO i bet there is a better way of doing this...
+    // i just don't know other than straight passthrough?
+    // i feel like i need more intelligent passing of logs from inner to outer
 	cmdr := cmd.NewCmder("go", ctx).
 		AddVArgv([]string{"run", "./cmd/dummy-server/main.go"}).
 		WithOutFn(func(b []byte) (int, error) {
-			l.logger.Info(string(b))
+			fmt.Fprintln(os.Stdout, string(b))
 			return len(b), nil
 		}).
 		WithErrFn(func(b []byte) (int, error) {
-			l.logger.Error(string(b))
+			fmt.Fprintln(os.Stderr, string(b))
 			return len(b), nil
 		})
 
@@ -77,18 +79,22 @@ func (l *LocalServers) CreateNewServer(ctx context.Context) (string, error) {
 			l.logger.Error("unable to run cmdr", "err", err)
 		}
 
-        // TODO the database checking to prove that this commander has closed
-        // properly
-        done := false
-        select {
-        case <-ctx.Done():
-            done = true
-        default:
-        }
+		// TODO the database checking to prove that this commander has closed
+		// properly
+		done := false
+		select {
+		case <-ctx.Done():
+			done = true
+		default:
+            config := l.stats.GetById(fmt.Sprintf("%d", outId))
+            if config != nil {
+                done = config.State == gameserverstats.GSStateClosed
+            }
+		}
 
-        if !done {
-            assert.Never("cmdr has closed unexpectedly")
-        }
+		if !done {
+			assert.Never("cmdr has closed unexpectedly", "id", outId)
+		}
 	}()
 
 	l.servers = append(l.servers, cmdr)
@@ -122,7 +128,7 @@ func (l *LocalServers) GetConnectionString(id string) (string, error) {
 	return fmt.Sprintf("%s:%d", gs.Host, gs.Port), nil
 }
 
-func (l *LocalServers) refresh() {
+func (l *LocalServers) refresh(ctx context.Context) {
 }
 
 func (l *LocalServers) Run(ctx context.Context) {
@@ -137,7 +143,7 @@ outer:
 		case <-ctx.Done():
 			break outer
 		case <-timer.C:
-			l.refresh()
+			l.refresh(ctx)
 		}
 	}
 }

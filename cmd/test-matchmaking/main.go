@@ -26,10 +26,10 @@ func createMatchMaking() (servermanagement.LocalServers, *gameserverstats.Sqlite
     db := gameserverstats.NewSqlite("file:" + path)
     db.SetSqliteModes()
     err := db.CreateGameServerConfigs()
-    assert.NoError(err, "unable to create game server configs", "err", err)
+    assert.NoError(err, "unable to create game server configs")
 
     configs, err := db.GetAllGameServerConfigs()
-    assert.NoError(err, "unable to get server configs", "err", err)
+    assert.NoError(err, "unable to get server configs")
     assert.Assert(len(configs) == 0, "expected the server to be free on configs", "configs", configs)
 
     local := servermanagement.NewLocalServers(db, servermanagement.ServerParams{
@@ -77,7 +77,7 @@ func main() {
         Port: uint16(mm.Params.Port),
         Stats: db,
         StdConnections: 50,
-        TimeToConnectionCountMS: 1500,
+        TimeToConnectionCountMS: 5000,
         ConnectionSleepMinMS: 50,
         ConnectionSleepMaxMS: 75,
     })

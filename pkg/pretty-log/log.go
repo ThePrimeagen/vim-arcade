@@ -323,7 +323,7 @@ func (h *Handler) dedupedInnerPrint(header, body string) {
             return
         } else {
             err := h.output()
-            assert.NoError(err, "unable to output from logger", "err", err)
+            assert.NoError(err, "unable to output from logger")
         }
     }
 
@@ -344,7 +344,7 @@ func (h *Handler) dedupedInnerPrint(header, body string) {
 
         if innerOutput == h.throttledOutput {
             err := h.output()
-            assert.NoError(err, "unable to output from logger", "err", err)
+            assert.NoError(err, "unable to output from logger")
         }
     }()
 }
