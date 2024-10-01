@@ -3,7 +3,7 @@ package dummy
 import "net"
 
 // GetFreePort asks the kernel for a free open port that is ready to use.
-func getFreePort() (port int, err error) {
+func GetFreePort() (port int, err error) {
 	var a *net.TCPAddr
 	if a, err = net.ResolveTCPAddr("tcp", "localhost:0"); err == nil {
 		var l *net.TCPListener
@@ -18,7 +18,7 @@ func getFreePort() (port int, err error) {
 
 func GetHostAndPort() (string, int) {
 
-    port, err := getFreePort()
+    port, err := GetFreePort()
     if err != nil {
         port = 42069
     }

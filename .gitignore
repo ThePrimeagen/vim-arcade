@@ -1,4 +1,5 @@
 .env
 /target
 err
+failed1
 out
