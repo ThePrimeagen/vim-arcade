@@ -129,13 +129,18 @@ round: %d
 `, s.adds, s.totalAdds, s.removes, s.totalRemoves, s.currentRound)
 }
 
-func (s *Simulation) client(ctx context.Context) *dummy.DummyClient {
+func (s *Simulation) client(ctx context.Context, wait *sync.WaitGroup) *dummy.DummyClient {
 	s.logger.Log(ctx, prettylog.LevelTrace, "client connecting...")
 	client := dummy.NewDummyClient(s.params.Host, s.params.Port)
-	err := client.Connect(ctx)
-	assert.NoError(err, "unable to connect to client")
-	client.WaitForReady()
-	s.logger.Log(ctx, prettylog.LevelTrace, "client connected")
+
+    go func() {
+        err := client.Connect(ctx)
+        assert.NoError(err, "unable to connect to client")
+        client.WaitForReady()
+        s.logger.Log(ctx, prettylog.LevelTrace, "client connected")
+        wait.Done()
+    }()
+
 	return &client
 }
 
@@ -207,11 +212,24 @@ outer:
 		wait.Add(2)
 		go func() {
 			s.adds = adds
+
+            addWait := sync.WaitGroup{}
+            addWait.Add(adds)
+
 			for range adds {
 				s.adds -= 1
+
+                // So here is the problem
+
+                // 1. the server is starting up and there are many connections being added.
+                // this function will finish shortly and the wait.Done function will be called...
 				<-time.NewTimer(time.Millisecond * time.Duration(s.nextInt(s.params.ConnectionSleepMinMS, s.params.ConnectionSleepMaxMS))).C
-				addedConns = append(addedConns, s.client(ctx))
+				addedConns = append(addedConns, s.client(ctx, &addWait))
 			}
+
+            // ok i wonder if more than one wait can work with wait groups...
+            // there we go... i hope this works?
+            addWait.Wait()
 			wait.Done()
 		}()
 
