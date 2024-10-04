@@ -56,25 +56,36 @@ func (l *LocalServers) GetBestServer() (string, error) {
 var id = 0
 
 func (l *LocalServers) CreateNewServer(ctx context.Context) (string, error) {
+    dummyServer := os.Getenv("DUMMY_SERVER")
+    if dummyServer == "" {
+        dummyServer = "./cmd/dummy-server/main.go"
+    }
 	outId := id
     // TODO i bet there is a better way of doing this...
     // i just don't know other than straight passthrough?
     // i feel like i need more intelligent passing of logs from inner to outer
 	cmdr := cmd.NewCmder("go", ctx).
-		AddVArgv([]string{"run", "./cmd/dummy-server/main.go"}).
+		AddVArgv([]string{"run", dummyServer}).
 		WithOutFn(func(b []byte) (int, error) {
-			fmt.Fprintln(os.Stdout, string(b))
+			fmt.Fprintf(os.Stdout, "%s", string(b))
 			return len(b), nil
 		}).
 		WithErrFn(func(b []byte) (int, error) {
-			fmt.Fprintln(os.Stderr, string(b))
+			fmt.Fprintf(os.Stderr, "%s", string(b))
 			return len(b), nil
 		})
 
 	id++
 
 	go func() {
-		err := cmdr.Run(append(getEnvVars(), fmt.Sprintf("ID=%d", outId)))
+        vars := getEnvVars()
+        vars = append(vars,
+            fmt.Sprintf("ID=%d", outId),
+            fmt.Sprintf("SQLITE=%s", os.Getenv("SQLITE")),
+        )
+
+		err := cmdr.Run(vars)
+
 		if err != nil {
 			l.logger.Error("unable to run cmdr", "err", err)
 		}

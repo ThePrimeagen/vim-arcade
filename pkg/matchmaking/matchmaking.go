@@ -64,10 +64,22 @@ func (m *MatchMakingServer) startWaiting() bool {
 	return false
 }
 
+func (m *MatchMakingServer) stopWaiting() {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	if !m.waitingForServer {
+        return
+	}
+
+    m.wait.Done()
+    m.waitingForServer = false
+}
+
 func (m *MatchMakingServer) createAndWait(ctx context.Context) string {
-    slog.Info("going to create and wait for new game server")
+    m.logger.Info("going to create and wait for new game server")
 	if !m.startWaiting() {
-        slog.Info("already waiting on server")
+        m.logger.Info("already waiting on server")
 		m.wait.Wait()
         m.logger.Info("waited for server to be created", "id", m.lastCreatedGameId)
         return m.lastCreatedGameId
@@ -91,8 +103,7 @@ func (m *MatchMakingServer) createAndWait(ctx context.Context) string {
 	m.logger.Info("server created", "id", gameId)
 	assert.NoError(err, "i need to be able to handle the issue of failing to create server or the server cannot ready")
 
-    m.wait.Done()
-
+    m.stopWaiting()
     return gameId
 }
 
@@ -111,7 +122,7 @@ func (m *MatchMakingServer) handleNewConnection(ctx context.Context, conn net.Co
 
 	gameId, err := m.Params.GameServer.GetBestServer()
 
-    slog.Info("getting best server", "gameId", gameId, "error", err)
+    m.logger.Info("getting best server", "gameId", gameId, "error", err)
 	if errors.Is(err, servermanagement.NoBestServer) {
 		gameId = m.createAndWait(ctx)
 	} else if err != nil {
@@ -161,13 +172,15 @@ func (m *MatchMakingServer) handleNewConnection(ctx context.Context, conn net.Co
 func innerListenForConnections(listener net.Listener, ctx context.Context) <-chan net.Conn {
 	ch := make(chan net.Conn, 10)
 	go func() {
+        outer:
 		for {
 			c, err := listener.Accept()
 			select {
 			case <-ctx.Done():
-				if nerr, ok := err.(*net.OpError); ok && nerr.Err.Error() != "use of closed network connection" {
-					assert.NoError(err, "matchmaking was unable to accept connection")
+				if !errors.Is(err, net.ErrClosed) {
+					assert.NoError(err, "matchmaking was unable to accept connection (with context done)")
 				}
+                break outer
 			default:
 				assert.NoError(err, "matchmaking was unable to accept connection")
 			}

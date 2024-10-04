@@ -6,5 +6,4 @@ var NoBestServer = errors.New("no best server found")
 
 type ServerParams struct {
     MaxLoad float32
-    RemoveServerLoad float32
 }

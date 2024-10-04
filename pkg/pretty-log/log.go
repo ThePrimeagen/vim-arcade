@@ -8,11 +8,11 @@ import (
 	"io"
 	"log/slog"
 	"maps"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
 )
@@ -113,15 +113,6 @@ func colorizer(colorCode int, v string) string {
 	return fmt.Sprintf("\033[%sm%s%s", strconv.Itoa(colorCode), v, reset)
 }
 
-type ThrottledOutput struct {
-    header string
-    body string
-}
-
-func (t *ThrottledOutput) String() string {
-    return fmt.Sprintf("header=\"%s\" body=\"%s\"", t.header, t.body)
-}
-
 type Handler struct {
 	handler          slog.Handler
 	r                func([]string, slog.Attr) slog.Attr
@@ -131,11 +122,6 @@ type Handler struct {
 	timestamp        bool
 	colorize         bool
 	outputEmptyAttrs bool
-
-	throttlePrintTime time.Duration
-    throttledOutput *ThrottledOutput
-    throttledCount int
-    throttleMutex sync.Mutex
 }
 
 func (h *Handler) Enabled(ctx context.Context, level slog.Level) bool {
@@ -143,11 +129,11 @@ func (h *Handler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
-    return &Handler{throttlePrintTime: h.throttlePrintTime, handler: h.handler.WithAttrs(attrs), buf: h.buf, r: h.r, mutex: h.mutex, writer: h.writer, colorize: h.colorize}
+    return &Handler{handler: h.handler.WithAttrs(attrs), buf: h.buf, r: h.r, mutex: h.mutex, writer: h.writer, colorize: h.colorize}
 }
 
 func (h *Handler) WithGroup(name string) slog.Handler {
-	return &Handler{throttlePrintTime: h.throttlePrintTime, handler: h.handler.WithGroup(name), buf: h.buf, r: h.r, mutex: h.mutex, writer: h.writer, colorize: h.colorize}
+	return &Handler{handler: h.handler.WithGroup(name), buf: h.buf, r: h.r, mutex: h.mutex, writer: h.writer, colorize: h.colorize}
 }
 
 func (h *Handler) computeAttrs(
@@ -282,71 +268,14 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 		body.WriteString(colorize(lightGray, string(attrsAsBytes)))
 	}
 
-	h.dedupedInnerPrint(header.String(), body.String())
+    // disabled in de615d835b17974b3eda8c846ae51fe008663d83
+    // i think there is a bug in ordering...
+	// h.dedupedInnerPrint(header.String(), body.String())
+    io.WriteString(h.writer, header.String())
+    io.WriteString(h.writer, body.String())
+    io.WriteString(h.writer, "\n")
+
 	return nil
-}
-
-func (h *Handler) output() error {
-    output := h.throttledOutput
-    count := h.throttledCount
-
-    h.throttledOutput = nil
-    h.throttledCount = 1
-
-	_, err := io.WriteString(h.writer, output.header)
-    if err != nil {
-        return err
-    }
-
-    if count > 1 {
-        _, err = io.WriteString(h.writer, fmt.Sprintf("%d ", count))
-    }
-
-	_, err = io.WriteString(h.writer, output.body)
-    if err != nil {
-        return err
-    }
-	_, err = io.WriteString(h.writer, "\n")
-    if err != nil {
-        return err
-    }
-    return nil
-}
-
-func (h *Handler) dedupedInnerPrint(header, body string) {
-    h.throttleMutex.Lock()
-    defer h.throttleMutex.Unlock()
-
-    if h.throttledOutput != nil {
-        if h.throttledOutput.header == header && h.throttledOutput.body == body {
-            h.throttledCount++
-            return
-        } else {
-            err := h.output()
-            assert.NoError(err, "unable to output from logger")
-        }
-    }
-
-    h.throttledOutput = &ThrottledOutput{
-        header: header,
-        body: body,
-    }
-    innerOutput := h.throttledOutput
-
-    go func() {
-        // TODO i am using sleep intentionally because it is easy not because
-        // it is correct If i wish to change this i need a better way to check
-        // this instead of spawning new go routines every flippinflippery log
-        <-time.NewTimer(h.throttlePrintTime).C
-
-        h.throttleMutex.Lock()
-        defer h.throttleMutex.Unlock()
-
-        if innerOutput == h.throttledOutput {
-            err := h.output()
-            assert.NoError(err, "unable to output from logger")
-        }
-    }()
 }
 
 func suppressDefaults(
@@ -374,10 +303,6 @@ func New(handlerOptions *slog.HandlerOptions, options ...Option) *Handler {
 	handler := &Handler{
 		buf:       buf,
 		timestamp: false,
-		throttlePrintTime: time.Second,
-        throttledOutput: nil,
-        throttledCount: 0,
-        throttleMutex: sync.Mutex{},
 		handler: slog.NewJSONHandler(buf, &slog.HandlerOptions{
 			Level:       handlerOptions.Level,
 			AddSource:   handlerOptions.AddSource,
@@ -399,18 +324,11 @@ func NewHandler(opts *slog.HandlerOptions, params PrettyLoggerParams, options ..
 		WithDestinationWriter(params.Out),
 		WithColor(),
 		WithOutputEmptyAttrs(),
-        WithSetThrottleTime(params.ThrottleTime),
 	}, options...)
 	return New(opts, options...)
 }
 
 type Option func(h *Handler)
-
-func WithSetThrottleTime(t time.Duration) Option {
-	return func(h *Handler) {
-		h.throttlePrintTime = t
-	}
-}
 
 func WithTimestamp() Option {
 	return func(h *Handler) {
@@ -445,14 +363,10 @@ func WithOutputEmptyAttrs() Option {
 type PrettyLoggerParams struct {
 	Out   io.Writer
 	Level slog.Level
-    ThrottleTime time.Duration
 }
 
 func NewParams(out io.Writer) PrettyLoggerParams {
     return PrettyLoggerParams{
-        ThrottleTime: time.Second,
-
-        // TODO use env ???
         Level: LevelTrace,
 
         Out: out,
@@ -460,6 +374,10 @@ func NewParams(out io.Writer) PrettyLoggerParams {
 }
 
 func SetProgramLevelPrettyLogger(params PrettyLoggerParams) *slog.Logger {
+    if os.Getenv("NO_PRETTY_LOGGER") != "" {
+        return slog.Default()
+    }
+
 	prettyHandler := NewHandler(&slog.HandlerOptions{
 		Level:       params.Level,
 		AddSource:   false,
@@ -469,3 +387,23 @@ func SetProgramLevelPrettyLogger(params PrettyLoggerParams) *slog.Logger {
 	slog.SetDefault(logger)
 	return logger
 }
+
+func CreateLoggerSink() *os.File {
+    var f *os.File
+    var err error
+
+    debugLog := os.Getenv("DEBUG_FILE")
+    if debugLog == "" {
+        f = os.Stderr
+    } else {
+        f, err = os.OpenFile(debugLog, os.O_RDWR|os.O_CREATE, 0644)
+        assert.NoError(err, "unable to create temporary file")
+    }
+
+    return f
+}
+
+func Trace(log *slog.Logger, msg string, data... any) {
+    log.Log(context.Background(), LevelTrace, msg, data...)
+}
+

@@ -81,7 +81,7 @@ func NotNil(item any, msg string, data ...any) {
 }
 
 func Never(msg string, data ...any) {
-    Assert(false, msg, data...)
+    runAssert(msg, data...)
 }
 
 func NoError(err error, msg string, data ...any) {

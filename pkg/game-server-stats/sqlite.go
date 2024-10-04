@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/tursodatabase/go-libsql"
@@ -79,6 +80,7 @@ func NewSqlite(path string) *Sqlite {
     logger := getLogger()
     db, err := sqlx.Open("libsql", path)
     assert.NoError(err, "failed to open db")
+    logger.Warn("New Sqlite", "path", path)
     return &Sqlite{
         db: db,
         logger: logger,
@@ -130,15 +132,41 @@ func (s *Sqlite) Update(stat GameServerConfig) error {
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now'));`
 
     // TODO probably don't need to update every
-    _, err := s.db.Exec(query, stat.Id, stat.State, stat.Connections, stat.ConnectionsAdded, stat.ConnectionsRemoved, stat.Load, stat.Host, stat.Port)
+    res, err := s.db.Exec(query, stat.Id, stat.State, stat.Connections, stat.ConnectionsAdded, stat.ConnectionsRemoved, stat.Load, stat.Host, stat.Port)
+    n, err := res.RowsAffected()
+    s.logger.Info("update complete", "rows affected", n, "error", err)
 
     return err
 }
+
+func EnsureSqliteURI(path string) string {
+    if strings.HasPrefix(path, "file:") ||
+        strings.HasPrefix(path, "https://") {
+        return path
+    }
+
+    return "file:" + path
+}
+
 
 func (j *Sqlite) Run(ctx context.Context) {
     <-ctx.Done()
     j.db.Close()
     j.logger.Warn("Sqlite finished running")
+}
+
+func (s *Sqlite) GetConfigByHostAndPort(host string, port uint16) (*GameServerConfig, error) {
+    query := `SELECT * FROM GameServerConfigs WHERE host = ? AND port = ?;`
+    s.logger.Error("GetConfigByHostAndPort", "query", query)
+    config := []GameServerConfig{}
+    err := s.db.Select(&config, query, host, port)
+
+    s.logger.Error("GetConfigByHostAndPort", "query", query, "config", config, "error", err)
+
+    if len(config) == 1 {
+        return &config[0], err
+    }
+    return nil, err
 }
 
 func (s *Sqlite) GetAllGameServerConfigs() ([]GameServerConfig, error) {
@@ -167,10 +195,10 @@ WHERE id=?;`, id)
 
 func (s *Sqlite) GetServersByUtilization(maxLoad float64) []GameServerConfig {
     var g []GameServerConfig
-    s.db.Select(&g, fmt.Sprintf(`SELECT *
+    s.db.Select(&g, `SELECT *
 FROM GameServerConfigs
-WHERE load < ? AND state == %d
-ORDER BY load DESC;`, GSStateReady), maxLoad)
+WHERE load < ? AND state == ?
+ORDER BY load DESC;`, maxLoad, GSStateReady)
     s.logger.Info("GetServersByUtilization", "maxLoad", maxLoad, "count", len(g))
     return g
 }
