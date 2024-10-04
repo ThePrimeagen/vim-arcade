@@ -85,6 +85,10 @@ func NewSqlite(path string) *Sqlite {
     }
 }
 
+func (s *Sqlite) Close() error {
+    return s.db.Close()
+}
+
 func (s *Sqlite) setPragma(name string, value string) {
     row := s.db.QueryRowx(fmt.Sprintf("PRAGMA %s=%s;", name, value))
     var v string
