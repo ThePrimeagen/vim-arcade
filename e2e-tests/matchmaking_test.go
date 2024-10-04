@@ -11,10 +11,15 @@ import (
 	servermanagement "vim-arcade.theprimeagen.com/pkg/server-management"
 )
 
-func TestMatchMakingCreateServer(t *testing.T) {
+func createLogger() *slog.Logger {
     logger := prettylog.SetProgramLevelPrettyLogger(prettylog.NewParams(prettylog.CreateLoggerSink()))
     logger = logger.With("area", "TestMatchMakingCreateServer").With("process", "test")
     slog.SetDefault(logger)
+    return logger
+}
+
+func TestMatchMakingCreateServer(t *testing.T) {
+    logger := createLogger()
 
     ctx, cancel := context.WithCancel(context.Background())
     path := getDBPath("no_server")
@@ -28,11 +33,33 @@ func TestMatchMakingCreateServer(t *testing.T) {
 
     t.Cleanup(func() {cancel()})
 
-    assertClient(&state, client);
-    assertConnectionCount(&state, gameserverstats.GameServecConfigConnectionStats{
+    AssertClient(&state, client);
+    AssertConnectionCount(&state, gameserverstats.GameServecConfigConnectionStats{
         Connections: 1,
         ConnectionsAdded: 1,
         ConnectionsRemoved: 0,
     }, time.Second * 5)
 }
 
+func TestMakingServerWithBatchRequest(t *testing.T) {
+    logger := createLogger()
+
+    ctx, cancel := context.WithCancel(context.Background())
+    path := getDBPath("no_server")
+    state := createEnvironment(ctx, path, servermanagement.ServerParams{
+        MaxLoad: 0.9,
+    })
+
+    logger.Info("Created environment", "state", state.String())
+    clients := CreateBatchedConnections(15, state.Factory, logger)
+    logger.Info("Created Client", "state", state.String())
+
+    t.Cleanup(func() {cancel()})
+
+    AssertClients(&state, clients);
+    AssertConnectionCount(&state, gameserverstats.GameServecConfigConnectionStats{
+        Connections: 15,
+        ConnectionsAdded: 15,
+        ConnectionsRemoved: 0,
+    }, time.Second * 5)
+}

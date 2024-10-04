@@ -88,7 +88,7 @@ func (g *DummyGameServer) incConnections(amount int) {
 	defer g.mutex.Unlock()
 
 	g.stats.Connections += amount
-	g.stats.Load += float32(amount) * 0.01
+	g.stats.Load += float32(amount) * 0.001
 	if amount >= 0 {
 		g.stats.ConnectionsAdded += amount
 	} else {

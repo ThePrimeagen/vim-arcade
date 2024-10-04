@@ -9,6 +9,12 @@ import (
 	assert "vim-arcade.theprimeagen.com/pkg/assert"
 )
 
+func AssertClients(state *ServerState, clients []*dummy.DummyClient) {
+    for _, client := range clients {
+        AssertClient(state, client)
+    }
+}
+
 func AssertClient(state *ServerState, client *dummy.DummyClient) {
     slog.Info("assertClient", "client", client.String())
     config, err := state.Sqlite.GetConfigByHostAndPort(client.GameServerHost, client.GameServerPort)
