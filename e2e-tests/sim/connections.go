@@ -18,7 +18,7 @@ type SimulationConnections struct {
 	m       sync.Mutex
 	rand    *rand.Rand
 	logger  *slog.Logger
-	wait    *sync.WaitGroup
+	wait    sync.WaitGroup
 }
 
 func NewSimulationConnections(f TestingClientFactory, r *rand.Rand) SimulationConnections {
@@ -30,7 +30,6 @@ func NewSimulationConnections(f TestingClientFactory, r *rand.Rand) SimulationCo
 		factory: f,
 		rand:    r,
 		logger:  slog.Default().With("area", "SimulationConnections"),
-		wait:    nil,
 	}
 }
 
@@ -41,8 +40,7 @@ func (s *SimulationConnections) Len() int {
 }
 
 func (s *SimulationConnections) StartRound() {
-	assert.Nil(s.wait, "SimulationConnections requires StartRound to be called after EndRound or upon initial construction")
-	s.wait = &sync.WaitGroup{}
+	s.wait = sync.WaitGroup{}
 }
 
 func (s *SimulationConnections) AssertAddsAndRemoves() {
@@ -57,9 +55,7 @@ func (s *SimulationConnections) AssertAddsAndRemoves() {
 }
 
 func (s *SimulationConnections) FinishRound() ([]*dummy.DummyClient, []*dummy.DummyClient) {
-	assert.NotNil(s.wait, "SimulationConnections requires StartRound to be called before EndRound")
 	s.wait.Wait()
-	s.wait = nil
 
     removes := s.removes
     adds := s.adds
@@ -71,8 +67,7 @@ func (s *SimulationConnections) FinishRound() ([]*dummy.DummyClient, []*dummy.Du
 }
 
 func (s *SimulationConnections) AddBatch(count int) int {
-	assert.NotNil(s.wait, "SimulationConnections requires add and addbatch to be called after StartRound")
-	clients := s.factory.CreateBatchedConnectionsWithWait(count, s.wait)
+	clients := s.factory.CreateBatchedConnectionsWithWait(count, &s.wait)
 
 	s.m.Lock()
 	defer s.m.Unlock()
@@ -84,8 +79,7 @@ func (s *SimulationConnections) AddBatch(count int) int {
 }
 
 func (s *SimulationConnections) Add() int {
-	assert.NotNil(s.wait, "SimulationConnections requires add and addbatch to be called after StartRound")
-	client := s.factory.NewWait(s.wait)
+	client := s.factory.NewWait(&s.wait)
 
 	s.m.Lock()
 	defer s.m.Unlock()
