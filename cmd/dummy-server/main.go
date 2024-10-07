@@ -20,6 +20,10 @@ func getId() string {
 func main() {
     godotenv.Load()
 
+    if os.Getenv("DEBUG_LOG") != "" {
+        assert.Never("debug log should never be specified for a dummy server")
+    }
+
     sqlitePath := os.Getenv("SQLITE")
     assert.Assert(sqlitePath != "", "you must provide a sqlite env variable to run the simulation dummy server")
     sqlitePath = gameserverstats.EnsureSqliteURI(sqlitePath)

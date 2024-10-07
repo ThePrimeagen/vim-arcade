@@ -28,6 +28,7 @@ type LocalServers struct {
 func getEnvVars() []string {
 	return []string{
 		fmt.Sprintf("GOPATH=%s", os.Getenv("GOPATH")),
+        fmt.Sprintf("SQLITE=%s", os.Getenv("SQLITE")),
 	}
 }
 
@@ -81,12 +82,23 @@ func (l *LocalServers) CreateNewServer(ctx context.Context) (string, error) {
         vars := getEnvVars()
         vars = append(vars,
             fmt.Sprintf("ID=%d", outId),
-            fmt.Sprintf("SQLITE=%s", os.Getenv("SQLITE")),
+
+            // subprocesses should not have the log file as it will cause odd
+            // log file truncation
+            fmt.Sprintf("DEBUG_LOG="),
         )
 
 		err := cmdr.Run(vars)
+        cancelled := false
+        select {
+        case <-ctx.Done():
+            cancelled = true
+        default:
+        }
 
-		if err != nil {
+		if cancelled {
+			l.logger.Error("cmdr context killed")
+        } else if !cancelled && err != nil {
 			l.logger.Error("unable to run cmdr", "err", err)
 		}
 

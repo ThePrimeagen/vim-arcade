@@ -73,6 +73,13 @@ func Assert(truth bool, msg string, data ...any) {
 	}
 }
 
+func Nil(item any, msg string, data ...any) {
+	if item != nil {
+		slog.Error("Nil#not nil encountered")
+		runAssert(msg, data...)
+	}
+}
+
 func NotNil(item any, msg string, data ...any) {
 	if item == nil {
 		slog.Error("NotNil#nil encountered")

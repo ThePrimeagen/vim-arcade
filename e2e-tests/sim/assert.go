@@ -1,8 +1,10 @@
 package sim
 
 import (
+	"fmt"
 	"log/slog"
 	"maps"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -55,6 +57,38 @@ func AssertConnectionCount(state *ServerState, counts gameserverstats.GameServec
 }
 
 func AssertServerStateCreation(server *ServerState, configs []ServerCreationConfig) {
+}
+
+type ConnectionValidator map[string]int
+
+func sumConfigConns(configs []gameserverstats.GameServerConfig) ConnectionValidator {
+	out := make(map[string]int)
+	for _, c := range configs {
+		out[c.Addr()] = c.Connections
+	}
+	return out
+}
+
+func (c *ConnectionValidator) Add(conns []*dummy.DummyClient) {
+	for _, conn := range conns {
+		fmt.Fprintf(os.Stderr, "ConnectionValidator#Add: %s\n", conn.GameServerAddr())
+		(*c)[conn.GameServerAddr()] += 1
+	}
+}
+
+func (c *ConnectionValidator) Remove(conns []*dummy.DummyClient) {
+	for _, conn := range conns {
+		fmt.Fprintf(os.Stderr, "ConnectionValidator#Remove: %s\n", conn.GameServerAddr())
+		(*c)[conn.GameServerAddr()] -= 1
+	}
+}
+
+func (c *ConnectionValidator) String() string {
+	out := make([]string, 0, len(*c))
+	for k, v := range *c {
+		out = append(out, fmt.Sprintf("%s = %d", k, v))
+	}
+	return strings.Join(out, "\n")
 }
 
 func AssertServerState(before []gameserverstats.GameServerConfig, after []gameserverstats.GameServerConfig, adds []*dummy.DummyClient, removes []*dummy.DummyClient) {
