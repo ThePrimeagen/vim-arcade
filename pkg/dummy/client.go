@@ -58,7 +58,7 @@ type DummyClient struct {
 }
 
 func (c *DummyClient) String() string {
-	return fmt.Sprintf("Host=%s Port=%d", c.MMHost, c.MMPort)
+    return fmt.Sprintf("Host=%s Port=%d", c.MMHost, c.MMPort)
 }
 
 var clientId = 0

@@ -1,4 +1,4 @@
-package e2etests
+package sim
 
 import (
 	"log/slog"
@@ -12,18 +12,6 @@ import (
 func AssertClients(state *ServerState, clients []*dummy.DummyClient) {
     for _, client := range clients {
         AssertClient(state, client)
-    }
-}
-
-func AssertAllClientsSameServer(state *ServerState, clients []*dummy.DummyClient) {
-    slog.Info("AssertAllClientsSameServer", "client", len(clients))
-    if len(clients) == 0 {
-        return
-    }
-
-    ip := clients[0].GameServerAddr()
-    for _, c := range clients {
-        assert.Assert(c.GameServerAddr() == ip, "client ip isn't the same", "expected", ip, "received", c.GameServerAddr())
     }
 }
 

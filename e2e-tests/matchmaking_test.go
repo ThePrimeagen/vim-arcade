@@ -22,8 +22,8 @@ func TestMatchMakingCreateServer(t *testing.T) {
     logger := createLogger()
 
     ctx, cancel := context.WithCancel(context.Background())
-    path := getDBPath("no_server")
-    state := createEnvironment(ctx, path, servermanagement.ServerParams{
+    path := GetDBPath("no_server")
+    state := CreateEnvironment(ctx, path, servermanagement.ServerParams{
         MaxLoad: 0.9,
     })
 
@@ -45,18 +45,19 @@ func TestMakingServerWithBatchRequest(t *testing.T) {
     logger := createLogger()
 
     ctx, cancel := context.WithCancel(context.Background())
-    path := getDBPath("no_server")
-    state := createEnvironment(ctx, path, servermanagement.ServerParams{
+    path := GetDBPath("no_server")
+    state := CreateEnvironment(ctx, path, servermanagement.ServerParams{
         MaxLoad: 0.9,
     })
 
     logger.Info("Created environment", "state", state.String())
-    clients := CreateBatchedConnections(15, state.Factory, logger)
+    clients := state.Factory.CreateBatchedConnections(15)
     logger.Info("Created Client", "state", state.String())
 
     t.Cleanup(func() {cancel()})
 
     AssertClients(&state, clients);
+    AssertAllClientsSameServer(&state, clients);
     AssertConnectionCount(&state, gameserverstats.GameServecConfigConnectionStats{
         Connections: 15,
         ConnectionsAdded: 15,
