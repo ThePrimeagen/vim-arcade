@@ -169,6 +169,13 @@ func (s *Sqlite) GetConfigByHostAndPort(host string, port uint16) (*GameServerCo
     return nil, err
 }
 
+func (s *Sqlite) DeleteGameServerConfig(id string) {
+    assert.Assert(os.Getenv("ENV") == "TESTING", "can only delete server configs while testing")
+    query := `DELETE FROM table_name WHERE column_name = ?;`
+    _, err := s.db.Exec(query)
+    assert.NoError(err, "there should be no error when deleting a row.")
+}
+
 func (s *Sqlite) GetAllGameServerConfigs() ([]GameServerConfig, error) {
     var configs []GameServerConfig
     query := `SELECT id, state, connections, load, host, port FROM GameServerConfigs;`

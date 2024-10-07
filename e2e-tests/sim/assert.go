@@ -2,16 +2,31 @@ package sim
 
 import (
 	"log/slog"
+	"maps"
+	"slices"
+	"strings"
 	"time"
 
+	assert "vim-arcade.theprimeagen.com/pkg/assert"
 	"vim-arcade.theprimeagen.com/pkg/dummy"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
-	assert "vim-arcade.theprimeagen.com/pkg/assert"
 )
 
 func AssertClients(state *ServerState, clients []*dummy.DummyClient) {
     for _, client := range clients {
         AssertClient(state, client)
+    }
+}
+
+func AssertAllClientsSameServer(state *ServerState, clients []*dummy.DummyClient) {
+    slog.Info("AssertAllClientsSameServer", "client", len(clients))
+    if len(clients) == 0 {
+        return
+    }
+
+    ip := clients[0].GameServerAddr()
+    for _, c := range clients {
+        assert.Assert(c.GameServerAddr() == ip, "client ip isn't the same", "expected", ip, "received", c.GameServerAddr())
     }
 }
 
@@ -37,5 +52,47 @@ func AssertConnectionCount(state *ServerState, counts gameserverstats.GameServec
     assert.Assert(conns.Connections == counts.Connections, "expceted the same number of connections")
     assert.Assert(conns.ConnectionsAdded == counts.ConnectionsAdded, "expceted the same number of connections added")
     assert.Assert(conns.ConnectionsRemoved == counts.ConnectionsRemoved, "expceted the same number of connections removed")
+}
+
+func AssertServerStateCreation(server *ServerState, configs []ServerCreationConfig) {
+}
+
+func AssertServerState(before []gameserverstats.GameServerConfig, after []gameserverstats.GameServerConfig, adds []*dummy.DummyClient, removes []*dummy.DummyClient) {
+    beforeValidator := sumConfigConns(before)
+    afterValidator := sumConfigConns(after)
+
+    beforeValidator.Add(adds)
+    beforeValidator.Remove(removes)
+
+    beforeKeysIter := maps.Keys(beforeValidator)
+    afterKeysIter := maps.Keys(afterValidator)
+
+    beforeKeys := slices.SortedFunc(beforeKeysIter, func(a, b string) int {
+        return strings.Compare(a, b)
+    })
+    afterKeys := slices.SortedFunc(afterKeysIter, func(a, b string) int {
+        return strings.Compare(a, b)
+    })
+
+    assert.Assert(len(beforeKeys) == len(afterKeys), "before and after keys have different lengths", "before", beforeKeys, "after", afterKeys)
+    for i, v := range beforeKeys {
+        assert.Assert(afterKeys[i] == v, "before and after key order doesn't match", "i", i, "before", v, "after", afterKeys[i], "beforeKeys", beforeKeys, "afterKeys", afterKeys)
+        if beforeValidator[v] != afterValidator[v] {
+            slog.Error("--------------- Validation Failed ---------------")
+
+            b := sumConfigConns(before)
+            slog.Error("server state before", "before", b.String(), "after", afterValidator.String())
+            slog.Error("Adds")
+            for i, c := range adds {
+                slog.Error("    client", "i", i, "addr", c.GameServerAddr())
+            }
+
+            slog.Error("Removes")
+            for i, c := range removes {
+                slog.Error("    client", "i", i, "addr", c.GameServerAddr())
+            }
+            assert.Never("expected vs received connection count mismatch", "failedOn", v, "expected", afterValidator, "received", beforeValidator)
+        }
+    }
 }
 

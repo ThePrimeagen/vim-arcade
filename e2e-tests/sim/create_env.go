@@ -17,6 +17,11 @@ import (
 	servermanagement "vim-arcade.theprimeagen.com/pkg/server-management"
 )
 
+type ServerCreationConfig struct {
+    From gameserverstats.GameServerConfig
+    To gameserverstats.GameServerConfig
+}
+
 type ServerState struct {
     Sqlite *gameserverstats.Sqlite
     Server *servermanagement.LocalServers
@@ -132,11 +137,13 @@ func createServer(ctx context.Context, server *ServerState, logger *slog.Logger)
 
 type ConnMap map[string][]*dummy.DummyClient
 
-func hydrateServers(ctx context.Context, server *ServerState, logger *slog.Logger) ConnMap {
+func hydrateServers(ctx context.Context, server *ServerState, logger *slog.Logger) (ConnMap, []ServerCreationConfig) {
     configs, err := server.Sqlite.GetAllGameServerConfigs()
     assert.NoError(err, "unable to get game server configs")
+    clearCreationConfigs(server, configs)
 
     connMap := make(ConnMap)
+    configMapper := []ServerCreationConfig{}
     logger.Info("Hydrating Servers", "count", len(configs))
     for _, c := range configs {
 
@@ -147,9 +154,13 @@ func hydrateServers(ctx context.Context, server *ServerState, logger *slog.Logge
         conns := factory.CreateBatchedConnections(c.Connections)
 
         connMap[sId] = conns
+        configMapper = append(configMapper, ServerCreationConfig{
+            From: c,
+            To: *sConfig,
+        })
     }
 
-    return connMap
+    return connMap, configMapper
 }
 
 func copyFile(from string, to string) {
@@ -187,11 +198,18 @@ func GetDBPath(name string) string {
     return path.Join(cwd, "data", name)
 }
 
+func clearCreationConfigs(server *ServerState, configs []gameserverstats.GameServerConfig) {
+    for _, c := range configs {
+        server.Sqlite.DeleteGameServerConfig(c.Id)
+    }
+}
+
 func CreateEnvironment(ctx context.Context, path string, params servermanagement.ServerParams) ServerState {
     logger := slog.Default().With("area", "create-env")
     logger.Warn("copying db file", "path", path)
     path = copyDBFile(path)
     os.Setenv("SQLITE", path)
+    os.Setenv("ENV", "TESTING")
 
     port, err := dummy.GetFreePort()
     assert.NoError(err, "unable to get a free port")
@@ -223,7 +241,10 @@ func CreateEnvironment(ctx context.Context, path string, params servermanagement
     }
 
     logger.Info("hydrating servers", "port", port)
-    server.Conns = hydrateServers(ctx, &server, logger)
+    conns, configs := hydrateServers(ctx, &server, logger)
+    server.Conns = conns
+
+    AssertServerStateCreation(&server, configs)
 
     logger.Info("environment fully created")
     return server

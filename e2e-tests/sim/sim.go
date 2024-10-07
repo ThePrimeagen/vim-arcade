@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"maps"
 	"math"
 	"math/rand"
 	"os"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -144,45 +142,6 @@ func (s *Simulation) client(ctx context.Context, wait *sync.WaitGroup) *dummy.Du
 	return &client
 }
 
-func compareServerStates(before []gameserverstats.GameServerConfig, after []gameserverstats.GameServerConfig, adds []*dummy.DummyClient, removes []*dummy.DummyClient) {
-    beforeValidator := sumConfigConns(before)
-    afterValidator := sumConfigConns(after)
-
-    beforeValidator.Add(adds)
-    beforeValidator.Remove(removes)
-
-    beforeKeysIter := maps.Keys(beforeValidator)
-    afterKeysIter := maps.Keys(afterValidator)
-
-    beforeKeys := slices.SortedFunc(beforeKeysIter, func(a, b string) int {
-        return strings.Compare(a, b)
-    })
-    afterKeys := slices.SortedFunc(afterKeysIter, func(a, b string) int {
-        return strings.Compare(a, b)
-    })
-
-    assert.Assert(len(beforeKeys) == len(afterKeys), "before and after keys have different lengths", "before", beforeKeys, "after", afterKeys)
-    for i, v := range beforeKeys {
-        assert.Assert(afterKeys[i] == v, "before and after key order doesn't match", "i", i, "before", v, "after", afterKeys[i])
-        if beforeValidator[v] != afterValidator[v] {
-            fmt.Fprintf(os.Stderr, "--------------- Validation Failed ---------------\n")
-
-            b := sumConfigConns(before)
-            fmt.Fprintf(os.Stderr, "server state before:\n%s\n", b.String())
-            fmt.Fprintf(os.Stderr, "server state after:\n%s\n", afterValidator.String())
-            fmt.Fprintf(os.Stderr, "Adds:\n")
-            for i, c := range adds {
-                fmt.Fprintf(os.Stderr, "%d: %s\n", i, c.GameServerAddr())
-            }
-            fmt.Fprintf(os.Stderr, "Removes:\n")
-            for i, c := range removes {
-                fmt.Fprintf(os.Stderr, "%d: %s\n", i, c.GameServerAddr())
-            }
-            assert.Never("expected vs received connection count mismatch", "failedOn", v, "expected", afterValidator, "received", beforeValidator)
-        }
-    }
-}
-
 func (s *Simulation) RunSimulation(ctx context.Context) error {
 	s.Done = false
 
@@ -276,7 +235,7 @@ outer:
 
 		serversAfter, err := s.params.Stats.GetAllGameServerConfigs()
         assert.NoError(err, "unable to get all game servers")
-        compareServerStates(servers, serversAfter, addedConns, removedConns)
+        AssertServerState(servers, serversAfter, addedConns, removedConns)
 		s.logger.Info("SimRound finished", "round", round, "totalAdds", s.totalAdds, "totalRemoves", s.totalRemoves, "time taken ms", time.Now().Sub(start).Milliseconds())
 	}
 
