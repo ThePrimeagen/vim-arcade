@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -29,7 +30,7 @@ func main() {
     sqlitePath = gameserverstats.EnsureSqliteURI(sqlitePath)
 
     prettylog.CreateLoggerFromEnv(os.Stderr)
-    slog.SetDefault(slog.Default().With("process", "DummyServer"))
+    slog.SetDefault(slog.Default().With("process", fmt.Sprintf("DummyServer-%s", getId())))
 
     ll :=  slog.Default().With("area", "dummy-server")
     ll.Warn("dummy-server initializing...")
