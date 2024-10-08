@@ -1,4 +1,4 @@
-package e2etests
+package sim
 
 import (
 	"context"
@@ -71,6 +71,22 @@ func NewTestingClientFactory(host string, port uint16, logger *slog.Logger) Test
     }
 }
 
+func (f *TestingClientFactory) CreateBatchedConnections(count int) []*dummy.DummyClient {
+    conns := make([]*dummy.DummyClient, 0)
+
+    wait := sync.WaitGroup{}
+    wait.Add(count)
+    f.logger.Info("creating all clients", "count", count)
+    for range count {
+        conns = append(conns, f.NewWait(&wait))
+    }
+    wait.Wait()
+    f.logger.Info("clients all created", "count", count)
+
+    return conns
+}
+
+
 func (f TestingClientFactory) WithPort(port uint16) TestingClientFactory {
     f.port = port
     return f
@@ -114,21 +130,6 @@ func createServer(ctx context.Context, server *ServerState, logger *slog.Logger)
     return sId, sConfig
 }
 
-func CreateBatchedConnections(count int, factory *TestingClientFactory, logger *slog.Logger) []*dummy.DummyClient {
-    conns := make([]*dummy.DummyClient, 0)
-
-    wait := sync.WaitGroup{}
-    wait.Add(count)
-    logger.Info("creating all clients", "count", count)
-    for range count {
-        conns = append(conns, factory.NewWait(&wait))
-    }
-    wait.Wait()
-    logger.Info("clients all created", "count", count)
-
-    return conns
-}
-
 type ConnMap map[string][]*dummy.DummyClient
 
 func hydrateServers(ctx context.Context, server *ServerState, logger *slog.Logger) ConnMap {
@@ -143,7 +144,7 @@ func hydrateServers(ctx context.Context, server *ServerState, logger *slog.Logge
 
         sId, sConfig := createServer(ctx, server, logger)
         factory := server.Factory.WithPort(uint16(sConfig.Port))
-        conns := CreateBatchedConnections(c.Connections, &factory, logger)
+        conns := factory.CreateBatchedConnections(c.Connections)
 
         connMap[sId] = conns
     }
@@ -178,7 +179,7 @@ func copyDBFile(path string) string {
     return fName
 }
 
-func getDBPath(name string) string {
+func GetDBPath(name string) string {
     cwd, err := os.Getwd()
     assert.NoError(err, "no cwd?")
 
@@ -186,7 +187,7 @@ func getDBPath(name string) string {
     return path.Join(cwd, "data", name)
 }
 
-func createEnvironment(ctx context.Context, path string, params servermanagement.ServerParams) ServerState {
+func CreateEnvironment(ctx context.Context, path string, params servermanagement.ServerParams) ServerState {
     logger := slog.Default().With("area", "create-env")
     logger.Warn("copying db file", "path", path)
     path = copyDBFile(path)
