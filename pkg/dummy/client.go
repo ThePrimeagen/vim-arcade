@@ -110,11 +110,12 @@ func (d *DummyClient) Write(data []byte) error {
 }
 
 // TODO probably do something with context, maybe utils is context done
-func (d *DummyClient) connectToMatchMaking(ctx context.Context) hostAndPort {
+func (d *DummyClient) connectToMatchMaking(_ context.Context) hostAndPort {
 	connStr := fmt.Sprintf("%s:%d", d.host, d.port)
 	d.logger.Info("connect to matchmaking", "conn", connStr)
 	conn, err := net.Dial("tcp4", connStr)
 	assert.NoError(err, "could not connect to server")
+	d.logger.Info("connected to the match making server", "conn", connStr)
 
 	data := make([]byte, 1000, 1000)
 	n, err := conn.Read(data)

@@ -28,6 +28,7 @@ type MatchMakingServer struct {
 
 // TODO consider all of these operations with game type
 // there will possibly be a day where i have more than one game type
+//go:generate mockery --name GameServer
 type GameServer interface {
 	GetBestServer() (string, error)
 	CreateNewServer(ctx context.Context) (string, error)
@@ -64,7 +65,9 @@ func (m *MatchMakingServer) startWaiting() bool {
 }
 
 func (m *MatchMakingServer) createAndWait(ctx context.Context) string {
+    slog.Info("going to create and wait for new game server")
 	if !m.startWaiting() {
+        slog.Info("already waiting on server")
 		m.wait.Wait()
         m.logger.Info("waited for server to be created", "id", m.lastCreatedGameId)
         return m.lastCreatedGameId
@@ -108,6 +111,7 @@ func (m *MatchMakingServer) handleNewConnection(ctx context.Context, conn net.Co
 
 	gameId, err := m.Params.GameServer.GetBestServer()
 
+    slog.Info("getting best server", "gameId", gameId, "error", err)
 	if errors.Is(err, servermanagement.NoBestServer) {
 		gameId = m.createAndWait(ctx)
 	} else if err != nil {
@@ -126,6 +130,34 @@ func (m *MatchMakingServer) handleNewConnection(ctx context.Context, conn net.Co
 	conn.Write([]byte(gs))
 }
 
+
+
+
+
+
+
+
+
+
+// LET ME THINK,,,,,,
+
+// ok here is what we are going to do
+// 1. i am going to instantiate the matchmaking
+// that means i am going to launch a mm server on a rando port
+
+// then i am going to create my dummy clients and i am going to
+// connect to them.. i think that is probably the best way to simulate this
+// 3rd i think i am going to create a dummy GameServer that isn't
+// using Mocks
+// but i first should see if i can create a custom interface
+//
+// 1. create mm server
+// 1. create dummy clients
+// 1. make a custom GameServer  i think i need this to be able to really tell
+// what is going on.  But first let me look into Mockery for a moment longer
+
+// ok, another issue.. i am having tcp connections hard coded...
+// this isn't probably what i want to do...
 func innerListenForConnections(listener net.Listener, ctx context.Context) <-chan net.Conn {
 	ch := make(chan net.Conn, 10)
 	go func() {
