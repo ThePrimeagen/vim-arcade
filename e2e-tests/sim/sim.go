@@ -9,19 +9,21 @@ import (
 	"sync"
 	"time"
 
+	"vim-arcade.theprimeagen.com/pkg/assert"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
 )
 
 type SimulationParams struct {
-	Seed                    int64
-	Rounds                  int
-	Host                    string
-	Port                    uint16
-	Stats                   gameserverstats.GSSRetriever
-	StdConnections          int
-	TimeToConnectionCountMS int64
-	ConnectionSleepMinMS    int
-	ConnectionSleepMaxMS    int
+	Seed                     int64
+	Rounds                   int
+	Host                     string
+	Port                     uint16
+	Stats                    gameserverstats.GSSRetriever
+	StdConnections           int
+	MaxBatchConnectionChange int
+	TimeToConnectionCountMS  int64
+	ConnectionSleepMinMS     int
+	ConnectionSleepMaxMS     int
 }
 
 type Simulation struct {
@@ -48,6 +50,12 @@ func NewSimulation(params SimulationParams) Simulation {
 	}
 }
 
+func getNextBatch(s *Simulation, remaining int) int {
+    maxRemaining := min(remaining, s.params.MaxBatchConnectionChange)
+    randomRemaining := s.nextInt(1, maxRemaining)
+    return randomRemaining
+}
+
 func (s *Simulation) nextInt(min int, max int) int {
 	out := s.rand.Int()
 	diff := max - min
@@ -69,12 +77,12 @@ round: %d
 func (s *Simulation) RunSimulation(ctx context.Context) error {
 	s.Done = false
 
-    factory := NewTestingClientFactory(s.params.Host, s.params.Port, s.logger)
-    connections := NewSimulationConnections(factory, s.rand)
-    waiter := NewStateWaiter(s.params.Stats)
-    waitTime := time.Millisecond * time.Duration(s.params.TimeToConnectionCountMS)
+	factory := NewTestingClientFactory(s.params.Host, s.params.Port, s.logger)
+	connections := NewSimulationConnections(factory, s.rand)
+	waiter := NewStateWaiter(s.params.Stats)
+	waitTime := time.Millisecond * time.Duration(s.params.TimeToConnectionCountMS)
 
-	s.logger.Error("starting simulation")
+	s.logger.Error("starting simulation", "waitTime", waitTime/time.Millisecond)
 	// Seed the random number generator for different results each time
 outer:
 	for round := range s.params.Rounds {
@@ -86,43 +94,55 @@ outer:
 		default:
 		}
 
-        waiter.StartRound()
-        connections.StartRound()
-
 		adds := int(math.Abs(s.rand.NormFloat64() * float64(s.params.StdConnections)))
-		removes := int(math.Abs(s.rand.NormFloat64() * float64(s.params.StdConnections)))
-		s.logger.Info("SimRound", "round", round, "current", waiter.conns, "adds", adds, "removes", removes)
+		removes := min(connections.Len(), int(math.Abs(s.rand.NormFloat64()*float64(s.params.StdConnections))))
+
+        startingConns := waiter.StartRound()
+		connections.StartRound(adds, removes)
+
+        expectedDone := startingConns
+        expectedDone.Connections += adds - removes
+        expectedDone.ConnectionsAdded += adds
+        expectedDone.ConnectionsRemoved += removes
+
+		s.logger.Info("SimRound", "round", round, "adds", adds, "removes", removes, "current", startingConns, "expected", expectedDone)
 
 		go func() {
-			for range adds {
-				s.adds -= 1
+			s.adds = adds
+			for s.adds > 0 {
+				randomAdds := getNextBatch(s, s.adds)
+				s.adds -= randomAdds
+
+				assert.Assert(s.adds >= 0, "s.adds somehow become negative")
+
 				<-time.NewTimer(time.Millisecond * time.Duration(s.nextInt(s.params.ConnectionSleepMinMS, s.params.ConnectionSleepMaxMS))).C
-                _ = connections.Add()
+				_ = connections.AddBatch(randomAdds)
 			}
 		}()
 
-		actualRemoves := 0
 		go func() {
 			s.removes = removes
-			for range removes {
-				s.removes -= 1
+			for s.removes > 0 {
+				randomRemoves := getNextBatch(s, s.removes)
+				s.removes -= randomRemoves
+
 				if connections.Len() == 0 {
 					continue
 				}
+
 				<-time.NewTimer(time.Millisecond * time.Duration(s.nextInt(s.params.ConnectionSleepMinMS, s.params.ConnectionSleepMaxMS))).C
-                connections.Remove(1)
-				actualRemoves++
+				connections.Remove(randomRemoves)
 			}
 		}()
 
-        addedConns, removedConns := connections.FinishRound()
+		waiter.WaitForRound(adds, removes, time.Duration(waitTime))
+		addedConns, removedConns := connections.FinishRound()
 
+		s.logger.Error("Added and Removed Conns", "expectedAdds", adds, "expectedRemoves", removes, "addedConns", len(addedConns), "removedConns", len(removedConns))
 		s.totalAdds += adds
-		s.totalRemoves += actualRemoves
+		s.totalRemoves += removes
 
-        waiter.WaitForRound(adds, actualRemoves, time.Duration(waitTime))
-        timeTaken := waiter.AssertRound(addedConns, removedConns)
-
+		timeTaken := waiter.AssertRound(addedConns, removedConns)
 		s.logger.Info("SimRound finished", "round", round, "totalAdds", s.totalAdds, "totalRemoves", s.totalRemoves, "time taken ms", timeTaken.Milliseconds())
 	}
 

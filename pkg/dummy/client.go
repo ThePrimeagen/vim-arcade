@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
+	"vim-arcade.theprimeagen.com/pkg/packet"
 	"vim-arcade.theprimeagen.com/pkg/utils"
 )
 
@@ -48,6 +49,7 @@ type DummyClient struct {
 	MMHost         string
 	MMPort         uint16
 	conn           net.Conn
+	closed           bool
 	done           chan struct{}
 	ready          chan struct{}
 	mutex          sync.Mutex
@@ -83,6 +85,7 @@ func NewDummyClientFromConnString(hostAndPort string) DummyClient {
 		ConnId: clientId,
 		done:   make(chan struct{}, 1),
 		ready:  make(chan struct{}, 1),
+        closed: false,
 	}
 }
 
@@ -117,21 +120,23 @@ func (d *DummyClient) Write(data []byte) error {
 // TODO probably do something with context, maybe utils is context done
 func (d *DummyClient) connectToMatchMaking(_ context.Context) hostAndPort {
 	connStr := fmt.Sprintf("%s:%d", d.MMHost, d.MMPort)
-	d.logger.Info("connect to matchmaking", "conn", connStr)
+	d.logger.Info("connect to matchmaking", "conn", connStr, "id", d.ConnId)
 	conn, err := net.Dial("tcp4", connStr)
-	assert.NoError(err, "could not connect to server")
-	d.logger.Info("connected to the match making server", "conn", connStr)
+	assert.NoError(err, "could not connect to server", "id", d.ConnId)
+	d.logger.Info("connected to the match making server", "conn", connStr, "id", d.ConnId)
 
+	d.logger.Info("waiting to receive mm data", "id", d.ConnId)
 	data := make([]byte, 1000, 1000)
 	n, err := conn.Read(data)
-	assert.NoError(err, "client could not read from match making server")
+	assert.NoError(err, "client could not read from match making server", "id", d.ConnId)
 	data = data[0:n]
 
+	d.logger.Info("received mm data packet", "id", d.ConnId, "data", string(data))
 	parts := strings.Split(string(data), ":")
-	assert.Assert(len(parts) == 2, "malformed string from server", "fromServer", string(data))
+	assert.Assert(len(parts) == 2, "malformed string from server", "fromServer", string(data), "id", d.ConnId)
 
 	port, err := strconv.Atoi(parts[1])
-	assert.NoError(err, "port was not a number")
+	assert.NoError(err, "port was not a number", "id", d.ConnId)
 
 	return hostAndPort{
 		port: uint16(port),
@@ -141,16 +146,16 @@ func (d *DummyClient) connectToMatchMaking(_ context.Context) hostAndPort {
 
 func (d *DummyClient) Connect(ctx context.Context) error {
 	d.State = CSConnecting
-	d.logger.Info("client connecting to match making")
+	d.logger.Info("client connecting to match making", "id", d.ConnId)
 	hap := d.connectToMatchMaking(ctx)
 	d.GameServerHost = hap.host
 	d.GameServerPort = hap.port
-	d.logger.Info("client connecting to game server", "host", hap.host, "port", hap.port)
+	d.logger.Info("client connecting to game server", "host", hap.host, "port", hap.port, "id", d.ConnId)
 	conn, err := net.Dial("tcp4", fmt.Sprintf("%s:%d", hap.host, hap.port))
-	assert.NoError(err, "client could not connect to the game server")
-	d.State = CSConnected
+	assert.NoError(err, "client could not connect to the game server", "id", d.ConnId)
 	d.conn = conn
-	d.logger.Info("client connected to game server", "host", d.MMHost, "port", d.MMPort)
+    d.State = CSConnected
+	d.logger.Info("client connected to game server", "host", d.MMHost, "port", d.MMPort, "id", d.ConnId)
 	d.ready <- struct{}{}
 
 	ctxReader := utils.NewContextReader(ctx)
@@ -158,12 +163,13 @@ func (d *DummyClient) Connect(ctx context.Context) error {
 
 	go func() {
 		for bytes := range ctxReader.Out {
-			d.logger.Error("message received", "data", string(bytes))
+			d.logger.Error("message received", "data", string(bytes), "id", d.ConnId)
 		}
 
-		if err, ok := <-ctxReader.Err; ok {
-			d.logger.Error("error with client", "error", err)
+		if err, ok := <-ctxReader.Err; ok && !d.closed {
+			d.logger.Error("error with client", "error", err, "id", d.ConnId)
 		}
+
 		d.State = CSDisconnected
 		d.done <- struct{}{}
 	}()
@@ -180,10 +186,16 @@ func (d *DummyClient) WaitForReady() {
 }
 
 func (d *DummyClient) Disconnect() {
-	if d.conn != nil {
-		err := d.conn.Close()
-		if err != nil {
-			d.logger.Error("error on close during disconnect", "err", err)
-		}
-	}
+    d.closed = true
+    assert.NotNil(d.conn, "attempting to disconnect a non connected client", "connId", d.ConnId)
+
+    n, err := d.conn.Write(packet.ClientClose())
+    if err != nil {
+        d.logger.Error("unable to write ClientClose to source", "n", n, "err", err)
+    }
+
+    err = d.conn.Close()
+    if err != nil {
+        d.logger.Error("error on close during disconnect", "err", err)
+    }
 }

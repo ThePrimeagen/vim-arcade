@@ -116,16 +116,17 @@ func AssertServerState(before []gameserverstats.GameServerConfig, after []gamese
 
             b := sumConfigConns(before)
             slog.Error("server state before", "before", b.String(), "after", afterValidator.String())
-            slog.Error("Adds")
+            slog.Error("Adds", "count", len(adds))
             for i, c := range adds {
                 slog.Error("    client", "i", i, "addr", c.GameServerAddr())
             }
 
-            slog.Error("Removes")
+            slog.Error("Removes", "count", len(removes))
             for i, c := range removes {
                 slog.Error("    client", "i", i, "addr", c.GameServerAddr())
             }
-            assert.Never("expected vs received connection count mismatch", "failedOn", v, "expected", afterValidator, "received", beforeValidator)
+
+            assert.Never("after vs before state + connections count mismatch", "failedOn", v, "currentState", afterValidator, "beforeState + connections added / removed", beforeValidator)
         }
     }
 }

@@ -28,7 +28,7 @@ func main() {
     assert.Assert(sqlitePath != "", "you must provide a sqlite env variable to run the simulation dummy server")
     sqlitePath = gameserverstats.EnsureSqliteURI(sqlitePath)
 
-    prettylog.SetProgramLevelPrettyLogger(prettylog.NewParams(os.Stderr))
+    prettylog.CreateLoggerFromEnv(os.Stderr)
     slog.SetDefault(slog.Default().With("process", "DummyServer"))
 
     ll :=  slog.Default().With("area", "dummy-server")

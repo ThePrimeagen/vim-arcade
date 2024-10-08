@@ -55,7 +55,7 @@ func main() {
         fh = os.Stdout
     }
 
-    logger := prettylog.SetProgramLevelPrettyLogger(prettylog.NewParams(fh))
+    logger := prettylog.CreateLoggerFromEnv(fh)
 
     slog.SetDefault(logger.With("process", "sim").With("area", "long-running"))
     local, db, mm := createMatchMaking()
@@ -78,7 +78,8 @@ func main() {
         Host: "",
         Port: uint16(mm.Params.Port),
         Stats: db,
-        StdConnections: 500,
+        StdConnections: 50,
+        MaxBatchConnectionChange: 10,
         TimeToConnectionCountMS: 5000,
         ConnectionSleepMinMS: 50,
         ConnectionSleepMaxMS: 75,

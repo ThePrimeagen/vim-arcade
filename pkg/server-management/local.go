@@ -29,6 +29,7 @@ func getEnvVars() []string {
 	return []string{
 		fmt.Sprintf("GOPATH=%s", os.Getenv("GOPATH")),
         fmt.Sprintf("SQLITE=%s", os.Getenv("SQLITE")),
+        fmt.Sprintf("DEBUG_TYPE=%s", os.Getenv("DEBUG_TYPE")),
 	}
 }
 

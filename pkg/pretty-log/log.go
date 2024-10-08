@@ -88,12 +88,21 @@ func getAreaColor(area string) int {
 	return color
 }
 
+func isHandledKey(key string) bool {
+    return key == ProcessKey || key == AreaKey || key == slog.LevelKey ||
+        key == slog.MessageKey || key == slog.TimeKey
+}
+
 func stringifyAttrs(attrs map[string]any) string {
 	str := strings.Builder{}
-    keys := slices.Sorted(maps.Keys(attrs))
+	keys := slices.Sorted(maps.Keys(attrs))
 
 	for _, k := range keys {
-        v := attrs[k]
+        if isHandledKey(k) {
+            continue
+        }
+
+		v := attrs[k]
 		str.WriteString(k)
 		str.WriteString("=")
 
@@ -109,13 +118,13 @@ func stringifyAttrs(attrs map[string]any) string {
 	return strings.TrimSpace(str.String())
 }
 
-func colorizer(colorCode int, v string) string {
+func Colorizer(colorCode int, v string) string {
 	return fmt.Sprintf("\033[%sm%s%s", strconv.Itoa(colorCode), v, reset)
 }
 
 type Handler struct {
 	handler          slog.Handler
-	r                func([]string, slog.Attr) slog.Attr
+	replaceAttr      func([]string, slog.Attr) slog.Attr
 	buf              *bytes.Buffer
 	mutex            *sync.Mutex
 	writer           io.Writer
@@ -129,11 +138,11 @@ func (h *Handler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
-    return &Handler{handler: h.handler.WithAttrs(attrs), buf: h.buf, r: h.r, mutex: h.mutex, writer: h.writer, colorize: h.colorize}
+	return &Handler{handler: h.handler.WithAttrs(attrs), buf: h.buf, replaceAttr: h.replaceAttr, mutex: h.mutex, writer: h.writer, colorize: h.colorize}
 }
 
 func (h *Handler) WithGroup(name string) slog.Handler {
-	return &Handler{handler: h.handler.WithGroup(name), buf: h.buf, r: h.r, mutex: h.mutex, writer: h.writer, colorize: h.colorize}
+	return &Handler{handler: h.handler.WithGroup(name), buf: h.buf, replaceAttr: h.replaceAttr, mutex: h.mutex, writer: h.writer, colorize: h.colorize}
 }
 
 func (h *Handler) computeAttrs(
@@ -157,102 +166,49 @@ func (h *Handler) computeAttrs(
 	return attrs, nil
 }
 
-func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
-	colorize := func(code int, value string) string {
-		return value
-	}
+func PrettyLine(data map[string]any, colorize func(code int, value string) string) (string, error) {
 
-	if h.colorize {
-		colorize = colorizer
-	}
-
-	var level string
-	levelAttr := slog.Attr{
-		Key:   slog.LevelKey,
-		Value: slog.AnyValue(r.Level),
-	}
-
-	if h.r != nil {
-		levelAttr = h.r([]string{}, levelAttr)
-	}
-
-	if !levelAttr.Equal(slog.Attr{}) {
-		level = levelAttr.Value.String() + ":"
-
-		switch r.Level {
-		case LevelTrace:
-			fallthrough
-		case slog.LevelDebug:
-			level = colorize(lightGray, level)
-		case slog.LevelInfo:
-			level = colorize(cyan, level)
-		case slog.LevelWarn:
-			level = colorize(lightYellow, level)
-		case slog.LevelError:
-			level = colorize(red, level)
-		case LevelFatal:
-			level = colorize(magenta, level)
-		default:
-			assert.Never("unrecognized log level", "level", r.Level)
-		}
-	}
-
-	var timestamp string
-	timeAttr := slog.Attr{
-		Key:   slog.TimeKey,
-		Value: slog.StringValue(r.Time.Format(timeFormat)),
-	}
-	if h.r != nil {
-		timeAttr = h.r([]string{}, timeAttr)
-	}
-	if !timeAttr.Equal(slog.Attr{}) {
-		timestamp = colorize(lightGray, timeAttr.Value.String())
-	}
-
-	var msg string
-	msgAttr := slog.Attr{
-		Key:   slog.MessageKey,
-		Value: slog.StringValue(r.Message),
-	}
-	if h.r != nil {
-		msgAttr = h.r([]string{}, msgAttr)
-	}
-	if !msgAttr.Equal(slog.Attr{}) {
-		msg = colorize(white, msgAttr.Value.String())
-	}
-
-	attrs, err := h.computeAttrs(ctx, r)
-	if err != nil {
-		return err
-	}
-
-	process, ok := attrs[ProcessKey]
+	process, ok := data[ProcessKey]
 	assert.Assert(ok, "must provide process for my delicious pretty log")
-	area, ok := attrs[AreaKey]
+	area, ok := data[AreaKey]
 	assert.Assert(ok, "must provide area for my delicious pretty log")
 
-	delete(attrs, ProcessKey)
-	delete(attrs, AreaKey)
+	level := data["level"].(string)
+
+	switch level {
+	case "TRACE":
+		fallthrough
+	case "DEBUG":
+		level = colorize(lightGray, level)
+	case "INFO":
+		level = colorize(cyan, level)
+	case "WARN":
+		level = colorize(lightYellow, level)
+	case "ERROR":
+		level = colorize(red, level)
+	case "FATAL":
+		level = colorize(magenta, level)
+	default:
+		assert.Never("unrecognized log level", "level", level)
+	}
+
+    msg := data["msg"].(string)
+    msg = colorize(white, msg)
 
 	var attrsAsBytes []byte
-	if h.outputEmptyAttrs || len(attrs) > 0 {
-		attrString := stringifyAttrs(attrs)
-		if len(attrString) > 42 {
-			attrsAsBytes, err = json.MarshalIndent(attrs, "", "  ")
-			if err != nil {
-				return fmt.Errorf("error when marshaling attrs: %w", err)
-			}
-		} else {
-			attrsAsBytes = []byte(attrString)
-		}
-	}
+	var err error
+    attrString := stringifyAttrs(data)
+    if len(attrString) > 42 {
+        attrsAsBytes, err = json.MarshalIndent(data, "", "  ")
+        if err != nil {
+            return "", fmt.Errorf("error when marshaling attrs: %w", err)
+        }
+    } else {
+        attrsAsBytes = []byte(attrString)
+    }
 
-    header := strings.Builder{}
+	header := strings.Builder{}
 	body := strings.Builder{}
-	if h.timestamp && len(timestamp) > 0 {
-		header.WriteString(timestamp)
-		header.WriteString(" ")
-	}
 
 	header.WriteString(colorize(getProcessColor(process.(string)), process.(string)))
 	header.WriteString(":")
@@ -264,16 +220,68 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 	body.WriteString(msg)
 
 	if len(attrsAsBytes) > 0 {
-        body.WriteString(" ")
+		body.WriteString(" ")
 		body.WriteString(colorize(lightGray, string(attrsAsBytes)))
 	}
 
-    // disabled in de615d835b17974b3eda8c846ae51fe008663d83
-    // i think there is a bug in ordering...
+	// disabled in de615d835b17974b3eda8c846ae51fe008663d83
+	// i think there is a bug in ordering...
 	// h.dedupedInnerPrint(header.String(), body.String())
-    io.WriteString(h.writer, header.String())
-    io.WriteString(h.writer, body.String())
-    io.WriteString(h.writer, "\n")
+    return header.String() + body.String(), nil
+}
+
+func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
+	colorize := func(code int, value string) string {
+		return value
+	}
+
+	if h.colorize {
+		colorize = Colorizer
+	}
+
+	toPretty := map[string]any{}
+
+	levelAttr := slog.Attr{
+		Key:   slog.LevelKey,
+		Value: slog.AnyValue(r.Level),
+	}
+
+	if h.replaceAttr != nil {
+		levelAttr = h.replaceAttr([]string{}, levelAttr)
+	}
+
+	toPretty[slog.LevelKey] = levelAttr.Value.String()
+
+	msgAttr := slog.Attr{
+		Key:   slog.MessageKey,
+		Value: slog.StringValue(r.Message),
+	}
+
+	if h.replaceAttr != nil {
+		msgAttr = h.replaceAttr([]string{}, msgAttr)
+	}
+
+	attrs, err := h.computeAttrs(ctx, r)
+	if err != nil {
+		return err
+	}
+
+	toPretty[slog.LevelKey] = levelAttr.Value.String()
+	toPretty[slog.MessageKey] = msgAttr.Value.String()
+    toPretty[ProcessKey] = attrs[ProcessKey]
+    toPretty[AreaKey] = attrs[AreaKey]
+
+	for k, v := range attrs {
+        toPretty[k] = v
+    }
+
+    str, err := PrettyLine(toPretty, colorize)
+    if err != nil {
+        return err
+    }
+
+	io.WriteString(h.writer, str)
+	io.WriteString(h.writer, "\n")
 
 	return nil
 }
@@ -308,8 +316,8 @@ func New(handlerOptions *slog.HandlerOptions, options ...Option) *Handler {
 			AddSource:   handlerOptions.AddSource,
 			ReplaceAttr: suppressDefaults(handlerOptions.ReplaceAttr),
 		}),
-		r:     handlerOptions.ReplaceAttr,
-		mutex: &sync.Mutex{},
+		replaceAttr: handlerOptions.ReplaceAttr,
+		mutex:       &sync.Mutex{},
 	}
 
 	for _, opt := range options {
@@ -366,17 +374,17 @@ type PrettyLoggerParams struct {
 }
 
 func NewParams(out io.Writer) PrettyLoggerParams {
-    return PrettyLoggerParams{
-        Level: LevelTrace,
+	return PrettyLoggerParams{
+		Level: LevelTrace,
 
-        Out: out,
-    }
+		Out: out,
+	}
 }
 
 func SetProgramLevelPrettyLogger(params PrettyLoggerParams) *slog.Logger {
-    if os.Getenv("NO_PRETTY_LOGGER") != "" {
-        return slog.Default()
-    }
+	if os.Getenv("NO_PRETTY_LOGGER") != "" {
+		return slog.Default()
+	}
 
 	prettyHandler := NewHandler(&slog.HandlerOptions{
 		Level:       params.Level,
@@ -389,21 +397,33 @@ func SetProgramLevelPrettyLogger(params PrettyLoggerParams) *slog.Logger {
 }
 
 func CreateLoggerSink() *os.File {
-    var f *os.File
-    var err error
+	var f *os.File
+	var err error
 
-    debugLog := os.Getenv("DEBUG_LOG")
-    if debugLog == "" {
-        f = os.Stderr
-    } else {
-        f, err = os.OpenFile(debugLog, os.O_RDWR|os.O_CREATE, 0644)
-        assert.NoError(err, "unable to create temporary file")
-    }
+	debugLog := os.Getenv("DEBUG_LOG")
+	if debugLog == "" {
+		f = os.Stderr
+	} else {
+		f, err = os.OpenFile(debugLog, os.O_RDWR|os.O_CREATE, 0644)
+		assert.NoError(err, "unable to create temporary file")
+	}
 
-    return f
+	return f
 }
 
-func Trace(log *slog.Logger, msg string, data... any) {
-    log.Log(context.Background(), LevelTrace, msg, data...)
+func CreateLoggerFromEnv(out *os.File) *slog.Logger {
+	if out == nil {
+		out = CreateLoggerSink()
+	}
+	if os.Getenv("DEBUG_TYPE") == "json" {
+		logger := slog.New(slog.NewJSONHandler(out, nil))
+		slog.SetDefault(logger)
+		return logger
+	}
+
+	return SetProgramLevelPrettyLogger(NewParams(out))
 }
 
+func Trace(log *slog.Logger, msg string, data ...any) {
+	log.Log(context.Background(), LevelTrace, msg, data...)
+}

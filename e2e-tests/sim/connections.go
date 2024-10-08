@@ -39,8 +39,11 @@ func (s *SimulationConnections) Len() int {
     return len(s.clients)
 }
 
-func (s *SimulationConnections) StartRound() {
+func (s *SimulationConnections) StartRound(adds int, removes int) {
 	s.wait = sync.WaitGroup{}
+
+    s.wait.Add(adds)
+    s.wait.Add(removes)
 }
 
 func (s *SimulationConnections) AssertAddsAndRemoves() {
@@ -87,13 +90,13 @@ func (s *SimulationConnections) Add() int {
 	idx := len(s.clients)
 	s.clients = append(s.clients, client)
     s.adds = append(s.adds, client)
+    s.logger.Info("Add", "len", len(s.adds))
 	return idx
 }
 
 func (s *SimulationConnections) Remove(count int) {
-    s.wait.Add(count)
 	removal := func(count int) []*dummy.DummyClient {
-		out := make([]*dummy.DummyClient, 0, 5)
+		out := make([]*dummy.DummyClient, 0, count)
 		s.m.Lock()
 		defer s.m.Unlock()
 
@@ -103,11 +106,13 @@ func (s *SimulationConnections) Remove(count int) {
 			s.clients = append(s.clients[0:idx], s.clients[idx+1:]...)
 		}
 
-        s.removes = append(s.removes, out...)
 		return out
 	}
 
 	removes := removal(count)
+    s.removes = append(s.removes, removes...)
+
+    assert.Assert(len(removes) == count, "we did not remove enough connections", "removes", len(removes), "count", count)
 	for _, c := range removes {
 		c.Disconnect()
         s.wait.Done()
@@ -166,16 +171,18 @@ func (f *TestingClientFactory) New() *dummy.DummyClient {
 
 // this is getting hacky...
 func (f *TestingClientFactory) NewWait(wait *sync.WaitGroup) *dummy.DummyClient {
-	wait.Add(1)
 	client := dummy.NewDummyClient(f.host, f.port)
 	f.logger.Info("factory new client with wait", "id", client.ConnId)
 
 	go func() {
-		defer wait.Done()
+		defer func() {
+            f.logger.Info("factory client connected with wait", "id", client.ConnId)
+            wait.Done()
+        }()
 
 		f.logger.Info("factory client connecting with wait", "id", client.ConnId)
-		client.Connect(context.Background())
-		f.logger.Info("factory client connected with wait", "id", client.ConnId)
+		go client.Connect(context.Background())
+        client.WaitForReady()
 	}()
 
 	return &client

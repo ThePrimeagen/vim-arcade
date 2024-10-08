@@ -49,6 +49,13 @@ type GameServerConfig struct {
 	Port int `db:"port"`
 }
 
+func (g *GameServerConfig) Equal(other *GameServerConfig) bool {
+    return g.Id == other.Id &&
+        g.Connections == other.Connections &&
+        g.ConnectionsAdded == other.ConnectionsAdded &&
+        g.ConnectionsRemoved == other.ConnectionsRemoved
+}
+
 func stateToString(state State) string {
 	switch state {
 	case GSStateInitializing:
