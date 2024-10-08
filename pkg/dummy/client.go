@@ -127,7 +127,10 @@ func (d *DummyClient) connectToMatchMaking(_ context.Context) hostAndPort {
 
 	d.logger.Info("waiting to receive mm data", "id", d.ConnId)
 	data := make([]byte, 1000, 1000)
-	n, err := conn.Read(data)
+	_, err = conn.Write(packet.LegacyClientId(fmt.Sprintf("%d", d.ConnId)))
+	assert.NoError(err, "unable to write to client", "id", d.ConnId)
+
+    n, err := conn.Read(data)
 	assert.NoError(err, "client could not read from match making server", "id", d.ConnId)
 	data = data[0:n]
 

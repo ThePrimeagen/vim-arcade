@@ -78,7 +78,7 @@ func main() {
         Host: "",
         Port: uint16(mm.Params.Port),
         Stats: db,
-        StdConnections: 50,
+        StdConnections: 1000,
         MaxBatchConnectionChange: 10,
         TimeToConnectionCountMS: 5000,
         ConnectionSleepMinMS: 50,
