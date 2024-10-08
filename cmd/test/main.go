@@ -2,10 +2,21 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"sync"
 )
 
 func main() {
-    fmt.Printf("Here you go: %s\n", os.Getenv("DUMMY"))
+    wait := sync.WaitGroup{}
+
+    wait.Add(2)
+    wait.Done()
+    wait.Done()
+    wait.Done()
+    wait.Done()
+
+    wait.Wait()
+
+    fmt.Println("DONE")
+
 }
 

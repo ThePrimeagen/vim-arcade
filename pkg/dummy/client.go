@@ -189,7 +189,7 @@ func (d *DummyClient) Disconnect() {
     d.closed = true
     assert.NotNil(d.conn, "attempting to disconnect a non connected client", "connId", d.ConnId)
 
-    n, err := d.conn.Write(packet.ClientClose())
+    n, err := d.conn.Write(packet.LegacyClientClose())
     if err != nil {
         d.logger.Error("unable to write ClientClose to source", "n", n, "err", err)
     }
