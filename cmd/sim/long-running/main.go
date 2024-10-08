@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"vim-arcade.theprimeagen.com/cmd/test-matchmaking/sim"
+	"vim-arcade.theprimeagen.com/e2e-tests/sim"
 	"vim-arcade.theprimeagen.com/pkg/assert"
 	"vim-arcade.theprimeagen.com/pkg/ctrlc"
 	"vim-arcade.theprimeagen.com/pkg/dummy"
@@ -57,8 +57,7 @@ func main() {
 
     logger := prettylog.SetProgramLevelPrettyLogger(prettylog.NewParams(fh))
 
-    slog.SetDefault(logger.With("process", "sim"))
-    logger = slog.Default().With("area", "TestMatchMaking")
+    slog.SetDefault(logger.With("process", "sim").With("area", "long-running"))
     local, db, mm := createMatchMaking()
     ctx, cancel := context.WithCancel(context.Background())
 
