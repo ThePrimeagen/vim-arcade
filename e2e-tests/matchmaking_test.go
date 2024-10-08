@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"vim-arcade.theprimeagen.com/e2e-tests/sim"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
 	prettylog "vim-arcade.theprimeagen.com/pkg/pretty-log"
 	servermanagement "vim-arcade.theprimeagen.com/pkg/server-management"
@@ -22,8 +23,8 @@ func TestMatchMakingCreateServer(t *testing.T) {
     logger := createLogger()
 
     ctx, cancel := context.WithCancel(context.Background())
-    path := GetDBPath("no_server")
-    state := CreateEnvironment(ctx, path, servermanagement.ServerParams{
+    path := sim.GetDBPath("no_server")
+    state := sim.CreateEnvironment(ctx, path, servermanagement.ServerParams{
         MaxLoad: 0.9,
     })
 
@@ -33,8 +34,8 @@ func TestMatchMakingCreateServer(t *testing.T) {
 
     t.Cleanup(func() {cancel()})
 
-    AssertClient(&state, client);
-    AssertConnectionCount(&state, gameserverstats.GameServecConfigConnectionStats{
+    sim.AssertClient(&state, client);
+    sim.AssertConnectionCount(&state, gameserverstats.GameServecConfigConnectionStats{
         Connections: 1,
         ConnectionsAdded: 1,
         ConnectionsRemoved: 0,
@@ -42,23 +43,20 @@ func TestMatchMakingCreateServer(t *testing.T) {
 }
 
 func TestMakingServerWithBatchRequest(t *testing.T) {
-    logger := createLogger()
+    createLogger()
 
     ctx, cancel := context.WithCancel(context.Background())
-    path := GetDBPath("no_server")
-    state := CreateEnvironment(ctx, path, servermanagement.ServerParams{
+    path := sim.GetDBPath("no_server")
+    state := sim.CreateEnvironment(ctx, path, servermanagement.ServerParams{
         MaxLoad: 0.9,
     })
 
-    logger.Info("Created environment", "state", state.String())
     clients := state.Factory.CreateBatchedConnections(15)
-    logger.Info("Created Client", "state", state.String())
-
     t.Cleanup(func() {cancel()})
 
-    AssertClients(&state, clients);
-    AssertAllClientsSameServer(&state, clients);
-    AssertConnectionCount(&state, gameserverstats.GameServecConfigConnectionStats{
+    sim.AssertClients(&state, clients);
+    sim.AssertAllClientsSameServer(&state, clients);
+    sim.AssertConnectionCount(&state, gameserverstats.GameServecConfigConnectionStats{
         Connections: 15,
         ConnectionsAdded: 15,
         ConnectionsRemoved: 0,
