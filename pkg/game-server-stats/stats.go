@@ -20,6 +20,16 @@ type GameServecConfigConnectionStats struct {
 	ConnectionsRemoved int `db:"connections_removed"`
 }
 
+func (g *GameServecConfigConnectionStats) String() string {
+    return fmt.Sprintf("Conns=%d Added=%d Removed=%d", g.Connections, g.ConnectionsAdded, g.ConnectionsRemoved)
+}
+
+func (g *GameServecConfigConnectionStats) Equal(other *GameServecConfigConnectionStats) bool {
+    return g.Connections == other.Connections &&
+        g.ConnectionsRemoved == other.ConnectionsRemoved &&
+        g.ConnectionsAdded == other.ConnectionsAdded
+}
+
 type GameServerConfig struct {
 	State State `db:"state"`
 

@@ -44,17 +44,21 @@ type hostAndPort struct {
 }
 
 type DummyClient struct {
-	logger *slog.Logger
-	host   string
-	port   uint16
-	conn   net.Conn
-	done   chan struct{}
-	ready  chan struct{}
-	mutex  sync.Mutex
-	gsHost string
-	gsPort uint16
-	State  ClientState
-	ConnId int
+	logger         *slog.Logger
+	MMHost         string
+	MMPort         uint16
+	conn           net.Conn
+	done           chan struct{}
+	ready          chan struct{}
+	mutex          sync.Mutex
+	GameServerHost string
+	GameServerPort uint16
+	State          ClientState
+	ConnId         int
+}
+
+func (c *DummyClient) String() string {
+	return fmt.Sprintf("Host=%s Port=%d", c.MMHost, c.MMPort)
 }
 
 var clientId = 0
@@ -67,14 +71,15 @@ func NewDummyClientFromConnString(hostAndPort string) DummyClient {
 	parts := strings.SplitN(hostAndPort, ":", 2)
 	port, err := strconv.Atoi(parts[1])
 	assert.NoError(err, "dummy client was provided a bad string", "hostAndPortString", hostAndPort)
+	logger := getDummyClientLogger()
 
 	clientId++
 	return DummyClient{
 		State:  CSInitialized,
-		host:   parts[0],
-		port:   uint16(port),
+		MMHost: parts[0],
+		MMPort: uint16(port),
 		mutex:  sync.Mutex{},
-		logger: getDummyClientLogger(),
+		logger: logger,
 		ConnId: clientId,
 		done:   make(chan struct{}, 1),
 		ready:  make(chan struct{}, 1),
@@ -85,8 +90,8 @@ func NewDummyClient(host string, port uint16) DummyClient {
 	clientId++
 	return DummyClient{
 		State:  CSInitialized,
-		host:   host,
-		port:   uint16(port),
+		MMHost: host,
+		MMPort: uint16(port),
 		logger: getDummyClientLogger(),
 		done:   make(chan struct{}, 1),
 		ready:  make(chan struct{}, 1),
@@ -95,11 +100,11 @@ func NewDummyClient(host string, port uint16) DummyClient {
 }
 
 func (d *DummyClient) HostAndPort() (string, uint16) {
-	return d.host, d.port
+	return d.MMHost, d.MMPort
 }
 
 func (d *DummyClient) GameServerAddr() string {
-	return fmt.Sprintf("%s:%d", d.gsHost, d.gsPort)
+	return fmt.Sprintf("%s:%d", d.GameServerHost, d.GameServerPort)
 }
 
 func (d *DummyClient) Write(data []byte) error {
@@ -111,7 +116,7 @@ func (d *DummyClient) Write(data []byte) error {
 
 // TODO probably do something with context, maybe utils is context done
 func (d *DummyClient) connectToMatchMaking(_ context.Context) hostAndPort {
-	connStr := fmt.Sprintf("%s:%d", d.host, d.port)
+	connStr := fmt.Sprintf("%s:%d", d.MMHost, d.MMPort)
 	d.logger.Info("connect to matchmaking", "conn", connStr)
 	conn, err := net.Dial("tcp4", connStr)
 	assert.NoError(err, "could not connect to server")
@@ -138,14 +143,14 @@ func (d *DummyClient) Connect(ctx context.Context) error {
 	d.State = CSConnecting
 	d.logger.Info("client connecting to match making")
 	hap := d.connectToMatchMaking(ctx)
-    d.gsHost = hap.host
-    d.gsPort = hap.port
+	d.GameServerHost = hap.host
+	d.GameServerPort = hap.port
 	d.logger.Info("client connecting to game server", "host", hap.host, "port", hap.port)
 	conn, err := net.Dial("tcp4", fmt.Sprintf("%s:%d", hap.host, hap.port))
-    assert.NoError(err, "client could not connect to the game server")
+	assert.NoError(err, "client could not connect to the game server")
 	d.State = CSConnected
 	d.conn = conn
-	d.logger.Info("client connected to game server", "host", d.host, "port", d.port)
+	d.logger.Info("client connected to game server", "host", d.MMHost, "port", d.MMPort)
 	d.ready <- struct{}{}
 
 	ctxReader := utils.NewContextReader(ctx)
