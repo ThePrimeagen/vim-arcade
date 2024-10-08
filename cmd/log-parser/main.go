@@ -29,9 +29,33 @@ type Filter struct {
     msg string
 }
 
+type RoundFilter struct  {
+    currentRound int
+    expectedRound int
+}
+
+func NewRoundFilter(round int) IFilter {
+    return &RoundFilter{
+        currentRound: -1,
+        expectedRound: round,
+    }
+}
+
+func (r *RoundFilter) Filter(line LogLine) bool {
+    if line.Log.Msg == "SimRound" {
+        r.currentRound = getRound(line)
+    }
+
+    return r.currentRound == r.expectedRound
+}
+
+func (r *RoundFilter) String() string {
+    return fmt.Sprintf("RoundFilter(%d)", r.expectedRound)
+}
+
 type IFilter interface {
-    Filter(line string) bool
-    Parse(line []string) (string, int)
+    Filter(line LogLine) bool
+    String() string
 }
 
 func NewFilter(line string) Filter {
@@ -53,42 +77,57 @@ func (f *Filter) Filter(log LogLine) bool {
     return process && area && msg
 }
 
+var simRoundFilter = NewFilter("*:*:SimRound")
+func getRound(log LogLine) int {
+    var line map[string]any
+    err := json.Unmarshal([]byte(log.Line), &line)
+    assert.NoError(err, "unable to parse sim round")
+
+    return int(line["round"].(float64))
+}
+
 func (f *Filter) String() string {
     return fmt.Sprintf("%s:%s:%s", f.process, f.area, f.msg)
 }
 
 type Parser struct {
-    logs []LogLine
-    filters []Filter
+    reader *bufio.Scanner
+    filters []IFilter
+}
+
+func NewParser(fh *os.File, filters []IFilter) Parser {
+    return Parser{
+        reader: bufio.NewScanner(fh),
+        filters: filters,
+    }
 }
 
 func (p *Parser) Next() *LogLine {
-    idx := -1
-    outer:
-    for i, l := range p.logs {
-        for _, f := range p.filters {
+    var log *LogLine = nil
 
+    outer:
+    for p.reader.Scan() {
+        txt := p.reader.Text()
+        l := toLog(txt)
+
+        if len(p.filters) == 0 {
+            log = &l
+            break
+        }
+
+        for _, f := range p.filters {
             if f.Filter(l) {
-                idx = i
+                log = &l
                 break outer
             }
         }
     }
 
-    if idx == -1 {
-        return nil
-    }
-
-    item := p.logs[idx]
-    p.logs = p.logs[idx + 1:]
-    return &item
+    return log
 }
 
 func (p *Parser) String() string {
-    out := []string{
-        fmt.Sprintf("Parser(%d)", len(p.logs)),
-        "Filters",
-    }
+    out := []string{ }
     for _, f := range p.filters {
         out = append(out, f.String())
     }
@@ -96,21 +135,30 @@ func (p *Parser) String() string {
     return strings.Join(out, "\n")
 }
 
+func toLog(line string) LogLine {
+    var log Log
+    _ = json.Unmarshal([]byte(line), &log)
+
+    return LogLine{Log: log, Line: line}
+}
+
 func toLogs(lines []string) []LogLine {
     out := []LogLine{}
     for _, line := range lines {
-        var log Log
-        _ = json.Unmarshal([]byte(line), &log)
-        out = append(out, LogLine{Log: log, Line: line})
+        out = append(out, toLog(line))
     }
 
     return out
 }
 
-func toFilters(lines []string) []Filter {
-    out := []Filter{}
+func toFilters(lines []string) []IFilter {
+    out := []IFilter{}
     for _, line := range lines {
-        out = append(out, NewFilter(line))
+        if line == "" {
+            continue
+        }
+        f := NewFilter(line)
+        out = append(out, &f)
     }
 
     return out
@@ -134,33 +182,7 @@ func isPipedStdin() bool {
     return (info.Mode() & os.ModeCharDevice) == 0
 }
 
-func readStdin() {
-
-    scanner := bufio.NewScanner(os.Stdin)
-
-	// Scan each line from stdin
-	for scanner.Scan() {
-		txt := []byte(scanner.Text())
-
-        var line map[string]any
-        err := json.Unmarshal(txt, &line)
-
-        toPrint, err := prettylog.PrettyLine(line, prettylog.Colorizer)
-        if err != nil {
-            fmt.Printf("%s\n", string(txt))
-        } else {
-            fmt.Printf("%s\n", toPrint)
-        }
-	}
-
-}
-
 func main() {
-    if isPipedStdin() {
-        readStdin()
-        return
-    }
-
     pretty := false
     flag.BoolVar(&pretty, "pretty", false, "to make the logs pretty")
 
@@ -173,19 +195,28 @@ func main() {
     itemsList := ""
     flag.StringVar(&itemsList, "items", "", "the filters")
     flag.Parse()
-    contents, err := os.ReadFile(flag.Arg(0))
-    assert.NoError(err, "expected contents to be read", "contents", contents)
+
+    var fh *os.File = nil
+    var err error = nil
+    if isPipedStdin() {
+        fh = os.Stdin
+    } else {
+		fh, err = os.OpenFile(flag.Arg(0), os.O_RDWR|os.O_CREATE, 0644)
+    }
+
+    assert.NoError(err, "expected contents to be read")
 
     itemsStrings := strings.Split(itemsList, ",")
     items := toFilters(itemsStrings)
 
-    lines := strings.Split(string(contents), "\n")
-    parser := Parser{ logs: toLogs(lines), filters: items}
+    if round >= 0 {
+        items = append(items, NewRoundFilter(round))
+    }
+
+    parser := NewParser(fh, items)
 
     prev := ""
     count := 0
-
-    fmt.Println(parser.String())
     for {
         out := parser.Next()
         var toPrint string
