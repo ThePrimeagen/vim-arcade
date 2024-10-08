@@ -135,8 +135,8 @@ outer:
 			}
 		}()
 
-		waiter.WaitForRound(adds, removes, time.Duration(waitTime))
 		addedConns, removedConns := connections.FinishRound()
+        waiter.WaitForRound(adds, removes, time.Duration(waitTime))
 
 		s.logger.Error("Added and Removed Conns", "expectedAdds", adds, "expectedRemoves", removes, "addedConns", len(addedConns), "removedConns", len(removedConns))
 		s.totalAdds += adds

@@ -42,7 +42,7 @@ func NewRoundFilter(round int) IFilter {
 }
 
 func (r *RoundFilter) Filter(line LogLine) bool {
-    if line.Log.Msg == "SimRound" {
+    if simRoundFilter.Filter(line) {
         r.currentRound = getRound(line)
     }
 

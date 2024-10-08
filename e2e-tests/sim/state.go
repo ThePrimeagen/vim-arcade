@@ -2,6 +2,7 @@ package sim
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -57,12 +58,14 @@ type ServerStateWaiter struct {
     startConfigs []gameserverstats.GameServerConfig
     conns gameserverstats.GameServecConfigConnectionStats
     startTime time.Time
+    logger *slog.Logger
 }
 
 func NewStateWaiter(stats gameserverstats.GSSRetriever) *ServerStateWaiter {
     return &ServerStateWaiter{
         Stats: stats,
         startConfigs: []gameserverstats.GameServerConfig{},
+        logger: slog.Default().With("area", "StateWaiter"),
     }
 }
 

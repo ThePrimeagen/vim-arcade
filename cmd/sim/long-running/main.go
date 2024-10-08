@@ -79,7 +79,7 @@ func main() {
         Port: uint16(mm.Params.Port),
         Stats: db,
         StdConnections: 500,
-        MaxBatchConnectionChange: 10,
+        MaxBatchConnectionChange: 25,
         TimeToConnectionCountMS: 5000,
         ConnectionSleepMinMS: 50,
         ConnectionSleepMaxMS: 75,
