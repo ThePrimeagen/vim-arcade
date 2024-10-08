@@ -2,13 +2,10 @@ package sim
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path"
-	"strings"
-	"sync"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
 	"vim-arcade.theprimeagen.com/pkg/dummy"
@@ -20,105 +17,6 @@ import (
 type ServerCreationConfig struct {
     From gameserverstats.GameServerConfig
     To gameserverstats.GameServerConfig
-}
-
-type ServerState struct {
-    Sqlite *gameserverstats.Sqlite
-    Server *servermanagement.LocalServers
-    MatchMaking *matchmaking.MatchMakingServer
-    Port int
-    Factory *TestingClientFactory
-    Conns ConnMap
-}
-
-func (s *ServerState) Close() {
-    s.MatchMaking.Close()
-    s.Server.Close()
-
-    err := s.Sqlite.Close()
-    assert.NoError(err, "sqlite errored on close")
-}
-
-func (s *ServerState) String() string {
-    configs, err := s.Sqlite.GetAllGameServerConfigs()
-    configsStr := strings.Builder{}
-    if err != nil {
-        _, err = configsStr.WriteString(fmt.Sprintf("unable to get server configs: %s", err))
-        assert.NoError(err, "never should happen (famous last words)")
-    } else {
-        for i, c := range configs {
-            if i > 0 {
-                configsStr.WriteString("\n")
-            }
-            configsStr.WriteString(c.String())
-        }
-    }
-
-    connections := s.Sqlite.GetTotalConnectionCount()
-    return fmt.Sprintf(`ServerState:
-Connections: %s
-Servers
-%s
-`, connections.String(), configsStr.String())
-}
-
-type TestingClientFactory struct {
-    host string
-    port uint16
-    logger *slog.Logger
-}
-
-func NewTestingClientFactory(host string, port uint16, logger *slog.Logger) TestingClientFactory {
-    return TestingClientFactory{
-        logger: logger.With("area", "TestClientFactory"),
-        host: host,
-        port: port,
-    }
-}
-
-func (f *TestingClientFactory) CreateBatchedConnections(count int) []*dummy.DummyClient {
-    conns := make([]*dummy.DummyClient, 0)
-
-    wait := sync.WaitGroup{}
-    wait.Add(count)
-    f.logger.Info("creating all clients", "count", count)
-    for range count {
-        conns = append(conns, f.NewWait(&wait))
-    }
-    wait.Wait()
-    f.logger.Info("clients all created", "count", count)
-
-    return conns
-}
-
-
-func (f TestingClientFactory) WithPort(port uint16) TestingClientFactory {
-    f.port = port
-    return f
-}
-
-func (f *TestingClientFactory) New() *dummy.DummyClient {
-    client := dummy.NewDummyClient(f.host, f.port)
-    f.logger.Info("factory connecting", "id", client.ConnId)
-    client.Connect(context.Background())
-    f.logger.Info("factory connected", "id", client.ConnId)
-    return &client
-}
-
-// this is getting hacky...
-func (f *TestingClientFactory) NewWait(wait *sync.WaitGroup) *dummy.DummyClient {
-    client := dummy.NewDummyClient(f.host, f.port)
-    f.logger.Info("factory new client with wait", "id", client.ConnId)
-
-    go func() {
-        defer wait.Done()
-
-        f.logger.Info("factory client connecting with wait", "id", client.ConnId)
-        client.Connect(context.Background())
-        f.logger.Info("factory client connected with wait", "id", client.ConnId)
-    }()
-
-    return &client
 }
 
 func createServer(ctx context.Context, server *ServerState, logger *slog.Logger) (string, *gameserverstats.GameServerConfig) {

@@ -11,3 +11,6 @@ e2e-debug:
 
 e2e:
     DUMMY_SERVER="{{justfile_directory()}}/cmd/dummy-server/main.go" go test ./e2e-tests/...
+
+kill-tests:
+    ps aux | grep "go test" | grep -v "grep" | awk '{print $2}' | xargs -I {} kill -9 {}

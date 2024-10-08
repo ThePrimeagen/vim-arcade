@@ -392,7 +392,7 @@ func CreateLoggerSink() *os.File {
     var f *os.File
     var err error
 
-    debugLog := os.Getenv("DEBUG_FILE")
+    debugLog := os.Getenv("DEBUG_LOG")
     if debugLog == "" {
         f = os.Stderr
     } else {
