@@ -1,20 +1,34 @@
 package main
 
 import (
-	"log/slog"
+	"fmt"
+	"sync"
 	"time"
 )
 
 func main() {
-    timer := time.NewTimer(time.Second)
+    wait := sync.WaitGroup{}
+    outerWait := sync.WaitGroup{}
+
+    wait.Add(1)
+    outerWait.Add(2)
 
     go func() {
-        slog.Info("starting timer")
-        _, ok := <-timer.C
-        slog.Info("stopping timer", "ok", ok)
+        wait.Wait()
+        fmt.Printf("wait group 1\n")
+        outerWait.Done()
     }()
 
-    timer.Stop()
-    time.Sleep(time.Second * 2)
+    go func() {
+        wait.Wait()
+        fmt.Printf("wait group 2\n")
+        outerWait.Done()
+    }()
+
+    <-time.NewTimer(time.Millisecond * 100).C
+
+    // this should trigger wait to go.. do we get two print statements?
+    wait.Done()
+    outerWait.Wait()
 }
 
