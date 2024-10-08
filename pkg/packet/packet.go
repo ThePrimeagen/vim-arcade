@@ -3,6 +3,8 @@ package packet
 import (
 	"bytes"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
 )
@@ -107,6 +109,14 @@ func IsClientClosed(data []byte) bool {
     return string(data) == "close"
 }
 
+func LegacyClientId(id string) []byte {
+    return []byte(fmt.Sprintf("hello:%s", id))
+}
+
+func ParseClientId(packet string) (int, error) {
+    assert.Assert(strings.HasPrefix(packet, "hello:"), "passed in a non hello packet to ParseClientId", "packet", packet)
+    return strconv.Atoi(strings.TrimSpace(packet[6:]))
+}
 
 func LegacyClientClose() []byte {
     return []byte("close")

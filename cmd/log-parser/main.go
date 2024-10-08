@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -127,12 +128,47 @@ func p(msg string, count int) {
     }
 }
 
+func isPipedStdin() bool {
+    info, err := os.Stdin.Stat()
+    assert.NoError(err, "unable to stat stdin")
+    return (info.Mode() & os.ModeCharDevice) == 0
+}
+
+func readStdin() {
+
+    scanner := bufio.NewScanner(os.Stdin)
+
+	// Scan each line from stdin
+	for scanner.Scan() {
+		txt := []byte(scanner.Text())
+
+        var line map[string]any
+        err := json.Unmarshal(txt, &line)
+
+        toPrint, err := prettylog.PrettyLine(line, prettylog.Colorizer)
+        if err != nil {
+            fmt.Printf("%s\n", string(txt))
+        } else {
+            fmt.Printf("%s\n", toPrint)
+        }
+	}
+
+}
+
 func main() {
+    if isPipedStdin() {
+        readStdin()
+        return
+    }
+
     pretty := false
     flag.BoolVar(&pretty, "pretty", false, "to make the logs pretty")
 
     dedupe := false
     flag.BoolVar(&dedupe, "dedupe", false, "dedupe exactly the same logs")
+
+    round := -1
+    flag.IntVar(&round, "round", -1, "which log round to grab")
 
     itemsList := ""
     flag.StringVar(&itemsList, "items", "", "the filters")

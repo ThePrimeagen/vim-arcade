@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
+	"vim-arcade.theprimeagen.com/pkg/packet"
 	servermanagement "vim-arcade.theprimeagen.com/pkg/server-management"
 )
 
@@ -120,55 +121,36 @@ func (m *MatchMakingServer) handleNewConnection(ctx context.Context, conn net.Co
 		}
 	}()
 
-	gameId, err := m.Params.GameServer.GetBestServer()
+    // TODO clean this up and use the packet parser to parse out the packets
+    // TODO Also do not die if the client doesn't send correct data, instead
+    // kill the client
+    b := make([]byte, 100, 100)
+    n, err := conn.Read(b)
+    assert.NoError(err, "unable to read from connection")
 
-    m.logger.Info("getting best server", "gameId", gameId, "error", err)
+    connId, err := packet.ParseClientId(string(b[0:n]))
+    assert.NoError(err, "unable to parse out id of client", "data", string(b[0:n]))
+
+	gameId, err := m.Params.GameServer.GetBestServer()
+    m.logger.Info("getting best server", "gameId", gameId, "error", err, "id", connId)
 	if errors.Is(err, servermanagement.NoBestServer) {
 		gameId = m.createAndWait(ctx)
 	} else if err != nil {
-		m.logger.Error("getting best server error", "error", err)
+		m.logger.Error("getting best server error", "error", err, "id", connId)
 		return
 	}
 
 	gs, err := m.Params.GameServer.GetConnectionString(gameId)
-	assert.NoError(err, "game server id somehow wasn't found")
-	assert.Assert(gs != "", "game server gameString did not produce a host:port pair", "id", gameId)
+	assert.NoError(err, "game server id somehow wasn't found", "id", connId)
+	assert.Assert(gs != "", "game server gameString did not produce a host:port pair", "id", gameId, "id", connId)
 
 	// TODO probably better to just get a full server information
-	m.logger.Info("game server selected", "host:port", gs)
+	m.logger.Info("game server selected", "host:port", gs, "id", connId)
 
 	// TODO(v1) develop a protocol
 	conn.Write([]byte(gs))
 }
 
-
-
-
-
-
-
-
-
-
-// LET ME THINK,,,,,,
-
-// ok here is what we are going to do
-// 1. i am going to instantiate the matchmaking
-// that means i am going to launch a mm server on a rando port
-
-// then i am going to create my dummy clients and i am going to
-// connect to them.. i think that is probably the best way to simulate this
-// 3rd i think i am going to create a dummy GameServer that isn't
-// using Mocks
-// but i first should see if i can create a custom interface
-//
-// 1. create mm server
-// 1. create dummy clients
-// 1. make a custom GameServer  i think i need this to be able to really tell
-// what is going on.  But first let me look into Mockery for a moment longer
-
-// ok, another issue.. i am having tcp connections hard coded...
-// this isn't probably what i want to do...
 func innerListenForConnections(listener net.Listener, ctx context.Context) <-chan net.Conn {
 	ch := make(chan net.Conn, 10)
 	go func() {

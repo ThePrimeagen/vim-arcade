@@ -415,13 +415,13 @@ func CreateLoggerFromEnv(out *os.File) *slog.Logger {
 	if out == nil {
 		out = CreateLoggerSink()
 	}
-	if os.Getenv("DEBUG_TYPE") == "json" {
-		logger := slog.New(slog.NewJSONHandler(out, nil))
-		slog.SetDefault(logger)
-		return logger
+	if os.Getenv("DEBUG_TYPE") == "pretty" {
+        return SetProgramLevelPrettyLogger(NewParams(out))
 	}
 
-	return SetProgramLevelPrettyLogger(NewParams(out))
+    logger := slog.New(slog.NewJSONHandler(out, nil))
+    slog.SetDefault(logger)
+    return logger
 }
 
 func Trace(log *slog.Logger, msg string, data ...any) {

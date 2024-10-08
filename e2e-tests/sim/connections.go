@@ -25,7 +25,7 @@ func NewSimulationConnections(f TestingClientFactory, r *rand.Rand) SimulationCo
 	return SimulationConnections{
 		m:       sync.Mutex{},
 		clients: []*dummy.DummyClient{},
-		adds: []*dummy.DummyClient{},
+		adds:    []*dummy.DummyClient{},
 		removes: []*dummy.DummyClient{},
 		factory: f,
 		rand:    r,
@@ -36,37 +36,37 @@ func NewSimulationConnections(f TestingClientFactory, r *rand.Rand) SimulationCo
 func (s *SimulationConnections) Len() int {
 	s.m.Lock()
 	defer s.m.Unlock()
-    return len(s.clients)
+	return len(s.clients)
 }
 
 func (s *SimulationConnections) StartRound(adds int, removes int) {
 	s.wait = sync.WaitGroup{}
 
-    s.wait.Add(adds)
-    s.wait.Add(removes)
+	s.wait.Add(adds)
+	s.wait.Add(removes)
 }
 
 func (s *SimulationConnections) AssertAddsAndRemoves() {
-    for _, c := range s.adds {
-        assert.Assert(c.State == dummy.CSConnected, "state of connection is not connected", "state", dummy.ClientStateToString(c.State))
-    }
+	for _, c := range s.adds {
+		assert.Assert(c.State == dummy.CSConnected, "state of connection is not connected", "state", dummy.ClientStateToString(c.State))
+	}
 
-    for _, c := range s.removes {
-        assert.Assert(c.State == dummy.CSDisconnected, "state of connection is not disconnected", "state", dummy.ClientStateToString(c.State))
-    }
+	for _, c := range s.removes {
+		assert.Assert(c.State == dummy.CSDisconnected, "state of connection is not disconnected", "state", dummy.ClientStateToString(c.State))
+	}
 
 }
 
 func (s *SimulationConnections) FinishRound() ([]*dummy.DummyClient, []*dummy.DummyClient) {
 	s.wait.Wait()
 
-    removes := s.removes
-    adds := s.adds
+	removes := s.removes
+	adds := s.adds
 
-    s.removes = []*dummy.DummyClient{}
-    s.adds = []*dummy.DummyClient{}
+	s.removes = []*dummy.DummyClient{}
+	s.adds = []*dummy.DummyClient{}
 
-    return adds, removes
+	return adds, removes
 }
 
 func (s *SimulationConnections) AddBatch(count int) int {
@@ -77,7 +77,7 @@ func (s *SimulationConnections) AddBatch(count int) int {
 
 	idx := len(s.clients)
 	s.clients = append(s.clients, clients...)
-    s.adds = append(s.adds, clients...)
+	s.adds = append(s.adds, clients...)
 	return idx
 }
 
@@ -89,8 +89,8 @@ func (s *SimulationConnections) Add() int {
 
 	idx := len(s.clients)
 	s.clients = append(s.clients, client)
-    s.adds = append(s.adds, client)
-    s.logger.Info("Add", "len", len(s.adds))
+	s.adds = append(s.adds, client)
+	s.logger.Info("Add", "len", len(s.adds))
 	return idx
 }
 
@@ -100,22 +100,24 @@ func (s *SimulationConnections) Remove(count int) {
 		s.m.Lock()
 		defer s.m.Unlock()
 
+        length := len(s.clients) - len(s.adds)
 		for range count {
-			idx := s.rand.Int() % len(s.clients)
+			idx := s.rand.Int() % length
 			out = append(out, s.clients[idx])
 			s.clients = append(s.clients[0:idx], s.clients[idx+1:]...)
+            length--
 		}
 
 		return out
 	}
 
 	removes := removal(count)
-    s.removes = append(s.removes, removes...)
+	s.removes = append(s.removes, removes...)
 
-    assert.Assert(len(removes) == count, "we did not remove enough connections", "removes", len(removes), "count", count)
+	assert.Assert(len(removes) == count, "we did not remove enough connections", "removes", len(removes), "count", count)
 	for _, c := range removes {
 		c.Disconnect()
-        s.wait.Done()
+		s.wait.Done()
 		s.logger.Warn("Disconnect Client", "addr", c.GameServerAddr())
 	}
 }
@@ -150,7 +152,7 @@ func (f *TestingClientFactory) CreateBatchedConnections(count int) []*dummy.Dumm
 	wait := &sync.WaitGroup{}
 	clients := f.CreateBatchedConnectionsWithWait(count, wait)
 
-    f.logger.Info("CreateBatchedConnections waiting", "count", count)
+	f.logger.Info("CreateBatchedConnections waiting", "count", count)
 	wait.Wait()
 
 	return clients
@@ -176,13 +178,14 @@ func (f *TestingClientFactory) NewWait(wait *sync.WaitGroup) *dummy.DummyClient 
 
 	go func() {
 		defer func() {
-            f.logger.Info("factory client connected with wait", "id", client.ConnId)
-            wait.Done()
-        }()
+			f.logger.Info("factory client connected with wait", "id", client.ConnId)
+			wait.Done()
+		}()
 
 		f.logger.Info("factory client connecting with wait", "id", client.ConnId)
-		go client.Connect(context.Background())
-        client.WaitForReady()
+        err := client.Connect(context.Background())
+        assert.NoError(err, "unable to connect to mm", "id", client.ConnId)
+		client.WaitForReady()
 	}()
 
 	return &client
