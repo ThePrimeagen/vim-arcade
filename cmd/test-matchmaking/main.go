@@ -23,7 +23,10 @@ func createMatchMaking() (servermanagement.LocalServers, *gameserverstats.Sqlite
 
     path := "/tmp/sim.db"
     gameserverstats.ClearSQLiteFiles(path)
-    db := gameserverstats.NewSqlite("file:" + path)
+
+    path = gameserverstats.EnsureSqliteURI(path)
+    db := gameserverstats.NewSqlite(path)
+    os.Setenv("SQLITE", path)
     db.SetSqliteModes()
     err := db.CreateGameServerConfigs()
     assert.NoError(err, "unable to create game server configs")
@@ -76,7 +79,7 @@ func main() {
         Host: "",
         Port: uint16(mm.Params.Port),
         Stats: db,
-        StdConnections: 50,
+        StdConnections: 500,
         TimeToConnectionCountMS: 5000,
         ConnectionSleepMinMS: 50,
         ConnectionSleepMaxMS: 75,
