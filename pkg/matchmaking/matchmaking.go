@@ -211,7 +211,7 @@ outer:
 			m.logger.Warn("context done")
 			break outer
 		case c := <-conns:
-			m.logger.Info("new connection")
+			m.logger.Info("new mm connection")
 
 			// TODO when there is no more room for servers
 			// we need to queue the connection

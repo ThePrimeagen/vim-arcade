@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	assert "vim-arcade.theprimeagen.com/pkg/assert"
 	prettylog "vim-arcade.theprimeagen.com/pkg/pretty-log"
 )
 
@@ -12,6 +13,7 @@ func KillContext(cancel context.CancelFunc) {
     go func() {
         time.Sleep(time.Second * 5)
         cancel()
+        assert.Never("context should never be killed with KillContext")
     }()
 }
 

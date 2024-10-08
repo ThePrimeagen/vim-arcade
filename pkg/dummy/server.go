@@ -7,12 +7,12 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
+	"vim-arcade.theprimeagen.com/pkg/packet"
 )
 
 var id = 0
@@ -35,7 +35,7 @@ type DummyGameServer struct {
 
 // this is bad...
 // i just needed something to do reads with context
-func (s *DummyGameServer) readLines(reader io.Reader, id int, out chan<- string) {
+func (s *DummyGameServer) readLines(reader io.Reader, id int, out chan<- []byte) {
 	bytes := make([]byte, 1000, 1000)
 	for {
 		s.logger.Warn("readLines waiting", "conn-id", id)
@@ -44,10 +44,12 @@ func (s *DummyGameServer) readLines(reader io.Reader, id int, out chan<- string)
 		if err != nil {
 			break
 		}
-		out <- strings.TrimSpace(string(bytes[0:n]))
+
+        // TODO this should be better at parsing data
+		out <- bytes[0:n]
 	}
 
-	out <- ""
+	out <- []byte{}
 	close(out)
 }
 
@@ -89,16 +91,15 @@ func (g *DummyGameServer) incConnections(amount int) {
 
 	g.stats.Connections += amount
 	g.stats.Load += float32(amount) * 0.001
+
 	if amount >= 0 {
 		g.stats.ConnectionsAdded += amount
+        g.logger.Info("incConnections(added)", "stats", g.stats.String())
 	} else {
 		g.stats.ConnectionsRemoved -= amount
+        g.logger.Info("incConnections(removed)", "stats", g.stats.String())
 	}
 
-	g.logger.Info("incConnections", "stats", g.stats.String())
-
-	err := g.db.Update(g.stats)
-	assert.NoError(err, "failed while writing to the database")
 }
 
 var connId = 0
@@ -113,13 +114,22 @@ func (g *DummyGameServer) handleConnection(ctx context.Context, conn net.Conn) {
 	g.incConnections(1)
 	connId++
 
-	datas := make(chan string, 10)
+	datas := make(chan []byte, 10)
 	go g.readLines(conn, connId, datas)
 	go func() {
-		select {
-		case <-ctx.Done():
-		case <-datas:
-		}
+        outer:
+        for {
+            select {
+            case <-ctx.Done():
+                break outer
+            case d := <-datas:
+                g.logger.Info("client data received", "data", d)
+                if packet.IsClientClosed(d) || packet.IsEmpty(d) {
+                    g.logger.Info("client sent close command")
+                    break outer
+                }
+            }
+        }
 
 		// TODO develop a connection struct that has an id
 		g.logger.Warn("closing client")
@@ -141,6 +151,8 @@ func (g *DummyGameServer) Run(outerCtx context.Context) error {
         listener.Close()
 		g.doneChan <- struct{}{}
 	}()
+
+    go g.handleStatUpdating(ctx)
 
 	g.stats.State = gameserverstats.GSStateReady
 	err = g.db.Update(g.stats)
@@ -180,7 +192,7 @@ outer:
 		case c := <-ch:
             assert.Assert(g.stats.State != gameserverstats.GSStateClosed, "somehow got a connection when state became closed", "stats", g.stats)
 
-			g.logger.Info("new connection")
+			g.logger.Info("new dummy-server connection")
 			go g.handleConnection(ctx, c)
             g.ready()
 		}
@@ -195,6 +207,27 @@ outer:
     // lint requires me to do this despite it not being correct...
     cancel()
 	return nil
+}
+
+func (g *DummyGameServer) handleStatUpdating(ctx context.Context) {
+    timer := time.NewTicker(time.Millisecond * 200)
+    prev := g.stats
+
+    outer:
+    for {
+        select {
+        case <-ctx.Done():
+            break outer
+        case <-timer.C:
+            next := g.stats
+            if !next.Equal(&prev) {
+                err := g.db.Update(next)
+                assert.NoError(err, "failed to update stats", "stats", next)
+                prev = next
+            }
+        }
+    }
+
 }
 
 func (g *DummyGameServer) closeDown() {

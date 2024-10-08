@@ -66,26 +66,29 @@ func NewStateWaiter(stats gameserverstats.GSSRetriever) *ServerStateWaiter {
     }
 }
 
-func (s *ServerStateWaiter) StartRound() {
+func (s *ServerStateWaiter) StartRound() gameserverstats.GameServecConfigConnectionStats {
 	startConfigs, err := s.Stats.GetAllGameServerConfigs()
 	assert.NoError(err, "StartRound: unable to get all server configs")
     s.startConfigs = startConfigs
     s.conns = s.Stats.GetTotalConnectionCount()
     s.startTime = time.Now()
+
+    return s.conns
 }
 
 func (s *ServerStateWaiter) WaitForRound(added, removed int, t time.Duration) {
-    expected := s.conns.Connections + added - removed
+    s.conns.Connections += added - removed
+    s.conns.ConnectionsRemoved += removed
+    s.conns.ConnectionsAdded += added
+
 	start := time.Now()
 	for time.Now().Sub(start).Milliseconds() < t.Milliseconds() {
 		conns := s.Stats.GetTotalConnectionCount()
 
-		if conns.Connections == expected &&
-			conns.ConnectionsAdded == added &&
-			conns.ConnectionsRemoved == removed {
+		if conns.Equal(&s.conns) {
 			break
 		}
-		<-time.NewTimer(time.Millisecond * 10).C
+		<-time.NewTimer(time.Millisecond * 250).C
 	}
 }
 
