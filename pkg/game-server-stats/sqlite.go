@@ -116,7 +116,9 @@ FROM GameServerConfigs;`
 }
 
 func (s *Sqlite) GetTotalConnectionCount() GameServecConfigConnectionStats {
-    sumQuery := `SELECT TOTAL(connections) AS connections, TOTAL(connections_added) AS connections_added, TOTAL(connections_removed) AS connections_removed
+    sumQuery := `SELECT CAST(TOTAL(connections) AS INT) AS connections,
+                     CAST(TOTAL(connections_added) AS INT) AS connections_added,
+                     CAST(TOTAL(connections_removed) AS INT) AS connections_removed
 FROM GameServerConfigs;`
 
     var counts GameServecConfigConnectionStats
