@@ -5,7 +5,7 @@ all data is interpreted as Network Ordering
 LSB                                                                   MSB
   1 2 3 4 5 6 7 8   1 2 3 4 5 6 7 8   1 2 3 4 5 6 7 8   1 2 3 4 5 6 7 8
 + - - - - - - - - + - - - - - - - - + - - - - - - - - + - - - - - - - - +
-|   version       | e|  type        |                len                |
+|   version       | en |    type    |                len                |
 + - - - - - - - - + - - - - - - - - + - - - - - - - - + - - - - - - - - +
 |    Data... len bytes ...                                              |
 + - - - - - - - - + - - - - - - - - + - - - - - - - - + - - - - - - - - +
