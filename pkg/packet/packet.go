@@ -125,7 +125,7 @@ func NewPacketFramer() PacketFramer {
     }
 }
 
-func (p *PacketFramer) read() error {
+func (p *PacketFramer) parse() error {
     for p.idx > HEADER_SIZE {
         if p.buf[0] != VERSION {
             return PacketVersionMismatch
@@ -172,7 +172,7 @@ func (p *PacketFramer) Run(ctx context.Context, r io.Reader) error {
                 n := copy(p.buf[p.idx:], d[read:])
                 p.idx += n
                 read += n
-                p.read()
+                p.parse()
             }
 
         case e := <-reader.Err:
