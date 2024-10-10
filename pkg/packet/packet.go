@@ -42,6 +42,23 @@ type PacketEncoder interface {
     Encoding() Encoding
 }
 
+func ValidHeader(data []byte) bool {
+    return data[0] == VERSION
+}
+
+func ContainsCompletePacket(data []byte) bool {
+    if len(data) >= HEADER_SIZE {
+        return false
+    }
+
+    l := getPacketLength(data)
+    return len(data) >= int(l) + HEADER_SIZE
+}
+
+func getPacketLength(data []byte) uint16 {
+    return binary.BigEndian.Uint16(data[HEADER_LENGTH_OFFSET:])
+}
+
 func PacketFromBytes(data []byte) Packet {
     assert.Assert(data[0] == VERSION, "version mismatch: this should be handled by the framer before packet is created", "VERSION", VERSION, "provided", data[0])
 
@@ -49,7 +66,7 @@ func PacketFromBytes(data []byte) Packet {
     dataLen := len(data) - HEADER_SIZE
     assert.Assert(dataLen > 0, "packets must contain some sort of data")
 
-    encodedLen := binary.BigEndian.Uint16(data[HEADER_LENGTH_OFFSET:])
+    encodedLen := getPacketLength(data)
     assert.Assert(dataLen == int(encodedLen), "the data buffer provided has a length mismatch", "expected length", dataLen, "encoded length", encodedLen)
 
     return Packet{
@@ -111,79 +128,76 @@ func (p *Packet) String() string {
 type PacketFramer struct {
     buf []byte
     idx int
-    out chan<- Packet
-    in <-chan Packet
 }
 
 func NewPacketFramer() PacketFramer {
-    ch := make(chan Packet, 10)
-
     return PacketFramer{
         buf: make([]byte, PACKET_PAYLOAD_SIZE, PACKET_PAYLOAD_SIZE),
-        in: ch,
-        out: ch,
     }
 }
 
-func (p *PacketFramer) parse() error {
-    for p.idx > HEADER_SIZE {
-        if p.buf[0] != VERSION {
-            return PacketVersionMismatch
-        }
+func (p *PacketFramer) Push(data []byte) {
+    n := copy(p.buf[p.idx:], data)
 
-        packetLen := binary.BigEndian.Uint16(p.buf[HEADER_LENGTH_OFFSET:])
-        fullLen := packetLen + HEADER_SIZE
-        if packetLen == PACKET_PAYLOAD_SIZE {
-            return PacketMaxSizeExceeded
-        }
+    if n < len(data) {
+        p.buf = append(p.buf, data[n:]...)
+    }
+    p.idx += len(data)
+}
 
-        if fullLen <= uint16(p.idx) {
-            out := make([]byte, fullLen, fullLen)
-            copy(out, p.buf[:fullLen])
-            copy(p.buf, p.buf[fullLen:])
-            p.idx = p.idx - int(fullLen)
-
-            p.out <- PacketFromBytes(out)
-        }
+func (p *PacketFramer) Pull() (*Packet, error) {
+    if p.idx < HEADER_SIZE {
+        return nil, nil
     }
 
-    return nil
+    if p.buf[0] != VERSION {
+        return nil, PacketVersionMismatch
+    }
+
+    packetLen := getPacketLength(p.buf)
+    fullLen := packetLen + HEADER_SIZE
+    if packetLen == PACKET_PAYLOAD_SIZE {
+        return nil, PacketMaxSizeExceeded
+    }
+
+    if fullLen <= uint16(p.idx) {
+        out := make([]byte, fullLen, fullLen)
+        copy(out, p.buf[:fullLen])
+        copy(p.buf, p.buf[fullLen:])
+        p.idx = p.idx - int(fullLen)
+
+        pkt := PacketFromBytes(out)
+        return &pkt, nil
+    }
+
+    return nil, nil
 }
 
-func (p *PacketFramer) Out() <-chan Packet {
-    assert.NotNil(p.in, "already consumed the out channel")
-    ch := p.in
-    p.in = nil
-    return ch
-}
+func FrameReader(ctx context.Context, r io.Reader, out chan *Packet) error {
+    b := make([]byte, PACKET_MAX_SIZE, PACKET_MAX_SIZE)
+    framer := NewPacketFramer()
 
-func (p *PacketFramer) Run(ctx context.Context, r io.Reader) error {
-    reader := utils.NewContextReader(ctx)
-    reader.Read(r)
-
-    var err error = nil
-
-    outer:
     for {
+        n, err := r.Read(b)
         select {
-        case d := <-reader.Out:
-            read := 0
-            for read < len(d) {
-                n := copy(p.buf[p.idx:], d[read:])
-                p.idx += n
-                read += n
-                p.parse()
+        case <-ctx.Done():
+            break;
+        default:
+        }
+
+        if err != nil {
+            return err
+        }
+
+        fmt.Printf("LOOK: %d\n", n)
+        framer.Push(b[:n])
+        for {
+            p, err := framer.Pull()
+            if err != nil || p == nil {
+                return err
             }
 
-        case e := <-reader.Err:
-            err = e
-            break outer
-
-        case <-ctx.Done():
-            break outer
+            out <- p
         }
     }
-
-    close(p.out)
-    return err
 }
