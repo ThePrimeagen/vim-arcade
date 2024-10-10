@@ -1,6 +1,8 @@
 package utils
 
-import "io"
+import (
+	"io"
+)
 
 func WriteAll(data []byte, writer io.Writer) error {
     wrote := 0
