@@ -1,6 +1,9 @@
 package amproxy
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 // TODO consider all of these operations with game type
 // there will possibly be a day where i have more than one game type
@@ -14,4 +17,10 @@ type GameServer interface {
 	String() string
 }
 
-
+type AMConnection interface {
+	io.Reader
+	io.Writer
+	io.Closer
+	Addr() string
+    Id() string
+}

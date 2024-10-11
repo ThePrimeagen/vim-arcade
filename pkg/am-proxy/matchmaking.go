@@ -7,33 +7,32 @@ import (
 	"log/slog"
 	"net"
 	"sync"
-	"time"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
-	"vim-arcade.theprimeagen.com/pkg/packet"
 	servermanagement "vim-arcade.theprimeagen.com/pkg/server-management"
 )
 
-type MatchMakingServerParams struct {
-	Port       int
-	GameServer GameServer
+type MatchMakingServer struct {
+	servers  GameServer
+	logger   *slog.Logger
+	listener net.Listener
+	ready    bool
+
+	waitingForServer bool
+
+	mutex             sync.Mutex
+	wait              sync.WaitGroup
+	lastCreatedGameId string
 }
 
-// Note for later..
-// ok... this is a bit nutty
-// i don't know what to do with this other than i need to create a server
-// but i don't want to create two at a time..
-//
-// i am going to return a bool because i need to know if i should be the one
-// that creates the server or not... weird approach.. i know..
 func (m *MatchMakingServer) startWaiting() bool {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	if !m.waitingForServer {
 		m.waitingForServer = true
-        m.wait = sync.WaitGroup{}
-        m.wait.Add(1)
+		m.wait = sync.WaitGroup{}
+		m.wait.Add(1)
 		return true
 	}
 
@@ -45,151 +44,78 @@ func (m *MatchMakingServer) stopWaiting() {
 	defer m.mutex.Unlock()
 
 	if !m.waitingForServer {
-        return
+		return
 	}
 
-    m.wait.Done()
-    m.waitingForServer = false
+	m.wait.Done()
+	m.waitingForServer = false
 }
 
 func (m *MatchMakingServer) createAndWait(ctx context.Context) string {
-    m.logger.Info("going to create and wait for new game server")
+	m.logger.Info("going to create and wait for new game server")
 	if !m.startWaiting() {
-        m.logger.Info("already waiting on server")
+		m.logger.Info("already waiting on server")
 		m.wait.Wait()
-        m.logger.Info("waited for server to be created", "id", m.lastCreatedGameId)
-        return m.lastCreatedGameId
+		m.logger.Info("waited for server to be created", "id", m.lastCreatedGameId)
+		return m.lastCreatedGameId
 	}
 
 	// TODO messaging goes way better...
 	// TODO horizontal scaling can be quite difficult for the current method
-	gameId, err := m.Params.GameServer.CreateNewServer(ctx)
+	gameId, err := m.servers.CreateNewServer(ctx)
 
-    // seee i hate this method.. it feels very prone to failure...
-    m.lastCreatedGameId = gameId
+	// seee i hate this method.. it feels very prone to failure...
+	m.lastCreatedGameId = gameId
 
 	if err != nil {
 		// TODO If there are no more servers available to create (max server count)
 		// then the queue needs to begin
 		assert.Never("unimplemented")
+
+        // i am thinking that i am going to have to share the error across the
+        // connections
 	}
 
 	m.logger.Info("waiting for server", "id", gameId)
-	err = m.Params.GameServer.WaitForReady(ctx, gameId)
+	err = m.servers.WaitForReady(ctx, gameId)
 	m.logger.Info("server created", "id", gameId)
 	assert.NoError(err, "i need to be able to handle the issue of failing to create server or the server cannot ready")
 
-    m.stopWaiting()
-    return gameId
+	m.stopWaiting()
+	return gameId
 }
 
 // TODO(v1) create no garbage ([]byte...)
-func (m *MatchMakingServer) handleNewConnection(ctx context.Context, conn net.Conn) {
-	// TODO(v1) authenticate
-	// TODO(v1) command (connect to game, connect twitch acconut, merge account, etc etc)
+func (m *MatchMakingServer) matchmake(ctx context.Context, conn AMConnection) (string, error) {
+    connId := conn.Id()
 
-	defer func() {
-		m.logger.Warn("client connection closed")
-		err := conn.Close()
-		if err != nil {
-			m.logger.Error("unable to close client connection", "error", err)
-		}
-	}()
-
-    // TODO clean this up and use the packet parser to parse out the packets
-    // TODO Also do not die if the client doesn't send correct data, instead
-    // kill the client
-    b := make([]byte, 100, 100)
-    n, err := conn.Read(b)
-    assert.NoError(err, "unable to read from connection")
-
-    connId, err := packet.ParseClientId(string(b[0:n]))
-    assert.NoError(err, "unable to parse out id of client", "data", string(b[0:n]))
-
-	gameId, err := m.Params.GameServer.GetBestServer()
-    m.logger.Info("getting best server", "gameId", gameId, "error", err, "id", connId)
+	gameId, err := m.servers.GetBestServer()
+	m.logger.Info("getting best server", "gameId", gameId, "error", err, "id", connId)
 	if errors.Is(err, servermanagement.NoBestServer) {
 		gameId = m.createAndWait(ctx)
 	} else if err != nil {
 		m.logger.Error("getting best server error", "error", err, "id", connId)
-		return
+		return "", err
 	}
 
-	gs, err := m.Params.GameServer.GetConnectionString(gameId)
+	gs, err := m.servers.GetConnectionString(gameId)
 	assert.NoError(err, "game server id somehow wasn't found", "id", connId)
 	assert.Assert(gs != "", "game server gameString did not produce a host:port pair", "id", gameId, "id", connId)
 
 	// TODO probably better to just get a full server information
 	m.logger.Info("game server selected", "host:port", gs, "id", connId)
 
-	// TODO(v1) develop a protocol
-	conn.Write([]byte(gs))
-}
-
-func innerListenForConnections(listener net.Listener, ctx context.Context) <-chan net.Conn {
-	ch := make(chan net.Conn, 10)
-	go func() {
-        outer:
-		for {
-			c, err := listener.Accept()
-			select {
-			case <-ctx.Done():
-				if !errors.Is(err, net.ErrClosed) {
-					assert.NoError(err, "matchmaking was unable to accept connection (with context done)")
-				}
-                break outer
-			default:
-				assert.NoError(err, "matchmaking was unable to accept connection")
-			}
-			ch <- c
-		}
-	}()
-	return ch
-}
-
-func (m *MatchMakingServer) checkForDeadInstances() {
-	//m.Params.GameServer.ListServers()
-}
-
-func (m *MatchMakingServer) listenForConnections(ctx context.Context, listener net.Listener) {
-	conns := innerListenForConnections(listener, ctx)
-
-	// TODO Configurable
-	timer := time.NewTicker(time.Second * 3)
-
-	m.logger.Warn("listening for connections")
-
-outer:
-	for {
-		select {
-		case <-timer.C:
-			m.checkForDeadInstances()
-		case <-ctx.Done():
-			m.logger.Warn("context done")
-			break outer
-		case c := <-conns:
-			m.logger.Info("new mm connection")
-
-			// TODO when there is no more room for servers
-			// we need to queue the connection
-			m.handleNewConnection(ctx, c)
-		}
-	}
+    return gs, nil
 }
 
 func (m *MatchMakingServer) Close() {
 	m.logger.Warn("closing down")
-	if m.listener != nil {
-		err := m.listener.Close()
-		if err != nil {
-			m.logger.Error("closing tcp server: error", "error", err)
-		}
-	}
+    //... hmm
 }
 
-func NewMatchMakingServer(params MatchMakingServerParams) *MatchMakingServer {
+func NewMatchMakingServer(servers GameServer) *MatchMakingServer {
 	return &MatchMakingServer{
-		Params:           params,
+        servers: servers,
 		logger:           slog.Default().With("area", "MatchMakingServer"),
 		waitingForServer: false,
 		ready:            false,
@@ -197,39 +123,9 @@ func NewMatchMakingServer(params MatchMakingServerParams) *MatchMakingServer {
 	}
 }
 
-func (m *MatchMakingServer) Run(ctx context.Context) error {
-	portStr := fmt.Sprintf(":%d", m.Params.Port)
-	m.logger.Info("starting server", "host:port", portStr)
-	l, err := net.Listen("tcp4", portStr)
-	m.listener = l
-	if err != nil {
-		return err
-	}
-
-	m.ready = true
-	m.listenForConnections(ctx, l)
-	return nil
-}
-
-func (m *MatchMakingServer) WaitForReady(ctx context.Context) {
-outer:
-	for {
-		select {
-		// TODO wtf was i thinking here?
-		// PORQUE CHANNEL
-		case <-time.NewTimer(time.Millisecond * 50).C:
-			if m.ready {
-				break outer
-			}
-		case <-ctx.Done():
-			break outer
-		}
-	}
-}
-
 func (m *MatchMakingServer) String() string {
 	return fmt.Sprintf(`-------- MatchMaking --------
 connected: %v
 %s
-`, m.listener != nil, m.Params.GameServer.String())
+`, m.listener != nil, m.servers.String())
 }
