@@ -7,10 +7,10 @@ import (
 	"os"
 	"path"
 
+	amproxy "vim-arcade.theprimeagen.com/pkg/am-proxy"
 	"vim-arcade.theprimeagen.com/pkg/assert"
 	"vim-arcade.theprimeagen.com/pkg/dummy"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
-	"vim-arcade.theprimeagen.com/pkg/matchmaking"
 	servermanagement "vim-arcade.theprimeagen.com/pkg/server-management"
 )
 
@@ -118,12 +118,10 @@ func CreateEnvironment(ctx context.Context, path string, params servermanagement
     local := servermanagement.NewLocalServers(sqlite, params)
     logger.Info("creating matchmaking", "port", port)
 
-    mm := matchmaking.NewMatchMakingServer(matchmaking.MatchMakingServerParams{
-        Port: port,
-        GameServer: &local,
-    })
-    go mm.Run(ctx)
-    mm.WaitForReady(ctx)
+    proxy := amproxy.NewAMProxy(ctx, &local, amproxy.CreateTCPConnectionFrom)
+    tcpProxy := amproxy.NewTCPProxy(&proxy, uint16(port))
+    go tcpProxy.Run(ctx)
+    tcpProxy.WaitForReady(ctx)
 
     logger.Info("creating client factory", "port", port)
     factory := NewTestingClientFactory("0.0.0.0", uint16(port), logger)
@@ -132,7 +130,7 @@ func CreateEnvironment(ctx context.Context, path string, params servermanagement
     server := ServerState{
         Sqlite: sqlite,
         Server: &local,
-        MatchMaking: mm,
+        Proxy: &tcpProxy,
         Port: port,
         Factory: &factory,
         Conns: nil,
