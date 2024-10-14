@@ -9,32 +9,33 @@ import (
 	"strings"
 	"time"
 
+	"vim-arcade.theprimeagen.com/pkg/api"
 	assert "vim-arcade.theprimeagen.com/pkg/assert"
-	"vim-arcade.theprimeagen.com/pkg/dummy"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
 )
 
-func AssertClients(state *ServerState, clients []*dummy.DummyClient) {
+func AssertClients(state *ServerState, clients []*api.Client) {
     for _, client := range clients {
         AssertClient(state, client)
     }
 }
 
-func AssertAllClientsSameServer(state *ServerState, clients []*dummy.DummyClient) {
+func AssertAllClientsSameServer(state *ServerState, clients []*api.Client) {
     slog.Info("AssertAllClientsSameServer", "client", len(clients))
     if len(clients) == 0 {
         return
     }
 
-    ip := clients[0].GameServerAddr()
+    ip := clients[0].Addr()
     for _, c := range clients {
-        assert.Assert(c.GameServerAddr() == ip, "client ip isn't the same", "expected", ip, "received", c.GameServerAddr())
+        assert.Assert(c.Addr() == ip, "client ip isn't the same", "expected", ip, "received", c.Addr())
     }
 }
 
-func AssertClient(state *ServerState, client *dummy.DummyClient) {
+func AssertClient(state *ServerState, client *api.Client) {
     slog.Info("assertClient", "client", client.String())
     config, err := state.Sqlite.GetConfigByHostAndPort(client.GameServerHost, client.GameServerPort)
+
     assert.NoError(err, "unable to get config by host and port", "client", client)
     assert.NotNil(config, "expected a config to be present", "client", client)
 }
@@ -69,14 +70,14 @@ func sumConfigConns(configs []gameserverstats.GameServerConfig) ConnectionValida
 	return out
 }
 
-func (c *ConnectionValidator) Add(conns []*dummy.DummyClient) {
+func (c *ConnectionValidator) Add(conns []*api.Client) {
 	for _, conn := range conns {
 		fmt.Fprintf(os.Stderr, "ConnectionValidator#Add: %s\n", conn.GameServerAddr())
 		(*c)[conn.GameServerAddr()] += 1
 	}
 }
 
-func (c *ConnectionValidator) Remove(conns []*dummy.DummyClient) {
+func (c *ConnectionValidator) Remove(conns []*api.Client) {
 	for _, conn := range conns {
 		fmt.Fprintf(os.Stderr, "ConnectionValidator#Remove: %s\n", conn.GameServerAddr())
 		(*c)[conn.GameServerAddr()] -= 1
@@ -91,7 +92,7 @@ func (c *ConnectionValidator) String() string {
 	return strings.Join(out, "\n")
 }
 
-func AssertServerState(before []gameserverstats.GameServerConfig, after []gameserverstats.GameServerConfig, adds []*dummy.DummyClient, removes []*dummy.DummyClient) {
+func AssertServerState(before []gameserverstats.GameServerConfig, after []gameserverstats.GameServerConfig, adds []*api.Client, removes []*api.Client) {
     beforeValidator := sumConfigConns(before)
     afterValidator := sumConfigConns(after)
 

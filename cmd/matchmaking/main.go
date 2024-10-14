@@ -9,7 +9,6 @@ import (
 	"github.com/joho/godotenv"
 	"vim-arcade.theprimeagen.com/pkg/ctrlc"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
-	"vim-arcade.theprimeagen.com/pkg/matchmaking"
 	"vim-arcade.theprimeagen.com/pkg/pretty-log"
 	servermanagement "vim-arcade.theprimeagen.com/pkg/server-management"
 )

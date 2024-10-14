@@ -30,7 +30,7 @@ type Encoding uint8
 const (
     EncodingJSON Encoding = iota
     EncodingString
-    EncodingUNUSED
+    EncodingBytes
     EncodingUNUSED2
 )
 
@@ -39,6 +39,8 @@ type PacketType uint8
 const (
     PacketError PacketType = iota
     PacketMessage
+    PacketClientAuth
+    PacketServerAuthAccepted
 )
 
 type Packet struct {
@@ -77,6 +79,10 @@ func CreateMessage(msg string) Packet {
 
 func CreateErrorPacket(err error) Packet {
     return PacketFromParts(PacketError, EncodingString, []byte(err.Error()))
+}
+
+func CreateClientAuth(id []byte) Packet {
+    return PacketFromParts(PacketClientAuth, EncodingBytes, id)
 }
 
 func getPacketLength(data []byte) uint16 {
