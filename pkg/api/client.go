@@ -131,13 +131,11 @@ func (d *Client) Connect(ctx context.Context) error {
 
     // TODO this is where i left off, i hope you haven't forgotten what you
     // are doing after a weekend of kids soccer...
-    packet.RequestResponse(&pkt)
+    rsp, err := packet.RequestResponse(&pkt, conn)
+	assert.NoError(err, "unable to req/res auth tokens from client")
 
-    _, err = conn.Write(d.id[:])
-    if err != nil {
-        return err
-    }
-
+    d.logger.Info("auth response", "rsp", rsp)
+    d.conn = conn
 	d.ready <- struct{}{}
 
 	ctxReader := utils.NewContextReader(ctx)

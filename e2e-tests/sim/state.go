@@ -7,8 +7,8 @@ import (
 	"time"
 
 	amproxy "vim-arcade.theprimeagen.com/pkg/am-proxy"
+	"vim-arcade.theprimeagen.com/pkg/api"
 	assert "vim-arcade.theprimeagen.com/pkg/assert"
-	"vim-arcade.theprimeagen.com/pkg/dummy"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
 	servermanagement "vim-arcade.theprimeagen.com/pkg/server-management"
 )
@@ -95,7 +95,7 @@ func (s *ServerStateWaiter) WaitForRound(added, removed int, t time.Duration) {
 	}
 }
 
-func (s *ServerStateWaiter) AssertRound(adds, removes []*dummy.DummyClient) time.Duration {
+func (s *ServerStateWaiter) AssertRound(adds, removes []*api.Client) time.Duration {
 	endConfig, err := s.Stats.GetAllGameServerConfigs()
 	assert.NoError(err, "AssertRound: unable to get configs")
 	AssertServerState(s.startConfigs, endConfig, adds, removes)
