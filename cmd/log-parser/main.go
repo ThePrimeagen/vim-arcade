@@ -192,8 +192,8 @@ func main() {
     round := -1
     flag.IntVar(&round, "round", -1, "which log round to grab")
 
-    itemsList := ""
-    flag.StringVar(&itemsList, "items", "", "the filters")
+    filtersList := ""
+    flag.StringVar(&filtersList, "filters", "", "the filters")
     flag.Parse()
 
     var fh *os.File = nil
@@ -206,14 +206,14 @@ func main() {
 
     assert.NoError(err, "expected contents to be read")
 
-    itemsStrings := strings.Split(itemsList, ",")
-    items := toFilters(itemsStrings)
+    filtersStrings := strings.Split(filtersList, ",")
+    filters := toFilters(filtersStrings)
 
     if round >= 0 {
-        items = append(items, NewRoundFilter(round))
+        filters = append(filters, NewRoundFilter(round))
     }
 
-    parser := NewParser(fh, items)
+    parser := NewParser(fh, filters)
 
     prev := ""
     count := 0
@@ -221,6 +221,7 @@ func main() {
         out := parser.Next()
         var toPrint string
         var err error = nil
+
         if out != nil {
             if pretty {
                 var line map[string]any

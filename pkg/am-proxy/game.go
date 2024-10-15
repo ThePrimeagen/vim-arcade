@@ -18,9 +18,7 @@ type GameServer interface {
 }
 
 type AMConnection interface {
-	io.Reader
-	io.Writer
-	io.Closer
+    io.ReadWriteCloser
 	Addr() string
     Id() string
 }

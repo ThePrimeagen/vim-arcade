@@ -18,7 +18,7 @@ func KillContext(cancel context.CancelFunc) {
 }
 
 func CreateLogger(name string) *slog.Logger {
-    logger := prettylog.SetProgramLevelPrettyLogger(prettylog.NewParams(prettylog.CreateLoggerSink()))
+    logger := prettylog.CreateLoggerFromEnv(nil)
     logger = logger.With("area", name).With("process", "sim")
     slog.SetDefault(logger)
 

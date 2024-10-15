@@ -23,7 +23,7 @@ func getId() int {
 	return out
 }
 
-type DummyGameServer struct {
+type GameServerRunner struct {
 	done     bool
 	doneChan     chan struct{}
 	db       gameserverstats.GSSRetriever
@@ -35,12 +35,12 @@ type DummyGameServer struct {
 
 // this is bad...
 // i just needed something to do reads with context
-func (s *DummyGameServer) readLines(reader io.Reader, id int, out chan<- []byte) {
+func (s *GameServerRunner) readLines(reader io.Reader, id int, out chan<- []byte) {
 	bytes := make([]byte, 1000, 1000)
 	for {
-		s.logger.Warn("readLines waiting", "conn-id", id)
+		s.logger.Info("readLines waiting", "conn-id", id)
 		n, err := reader.Read(bytes)
-		s.logger.Warn("readLines read", "conn-id", id, "n", n, "err", err)
+		s.logger.Info("readLines read", "conn-id", id, "n", n, "err", err)
 		if err != nil {
 			break
 		}
@@ -53,11 +53,11 @@ func (s *DummyGameServer) readLines(reader io.Reader, id int, out chan<- []byte)
 	close(out)
 }
 
-func NewDummyGameServer(db gameserverstats.GSSRetriever, stats gameserverstats.GameServerConfig) *DummyGameServer {
+func NewGameServerRunner(db gameserverstats.GSSRetriever, stats gameserverstats.GameServerConfig) *GameServerRunner {
 	logger := slog.Default().With("area", "GameServer")
 	logger.Warn("new dummy game server", "ID", os.Getenv("ID"))
 
-	return &DummyGameServer{
+	return &GameServerRunner{
 		logger: logger,
 		stats:  stats,
 		db:     db,
@@ -67,7 +67,7 @@ func NewDummyGameServer(db gameserverstats.GSSRetriever, stats gameserverstats.G
 	}
 }
 
-func (g *DummyGameServer) innerListenForConnections(listener net.Listener) <-chan net.Conn {
+func (g *GameServerRunner) innerListenForConnections(listener net.Listener) <-chan net.Conn {
 	ch := make(chan net.Conn, 10)
 	go func() {
 		for {
@@ -76,7 +76,7 @@ func (g *DummyGameServer) innerListenForConnections(listener net.Listener) <-cha
                 break
             }
 
-			assert.NoError(err, "DummyGameServer was unable to accept connection")
+			assert.NoError(err, "GameServerRunner was unable to accept connection")
 			ch <- c
 		}
 	}()
@@ -85,7 +85,7 @@ func (g *DummyGameServer) innerListenForConnections(listener net.Listener) <-cha
 
 // this function is so bad that i need to see a doctor
 // which also means i am ready to work at FAANG
-func (g *DummyGameServer) incConnections(amount int) {
+func (g *GameServerRunner) incConnections(amount int) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
@@ -104,13 +104,7 @@ func (g *DummyGameServer) incConnections(amount int) {
 
 var connId = 0
 
-func (g *DummyGameServer) handleConnection(ctx context.Context, conn net.Conn) {
-	_, err := conn.Write([]byte("ready"))
-	if err != nil {
-		conn.Close()
-		return
-	}
-
+func (g *GameServerRunner) handleConnection(ctx context.Context, conn net.Conn) {
 	g.incConnections(1)
 	connId++
 
@@ -138,7 +132,7 @@ func (g *DummyGameServer) handleConnection(ctx context.Context, conn net.Conn) {
 	}()
 }
 
-func (g *DummyGameServer) Run(outerCtx context.Context) error {
+func (g *GameServerRunner) Run(outerCtx context.Context) error {
     ctx, cancel := context.WithCancel(outerCtx)
 
 	g.logger.Warn("dummy-server#Run started...")
@@ -209,7 +203,7 @@ outer:
 	return nil
 }
 
-func (g *DummyGameServer) handleStatUpdating(ctx context.Context) {
+func (g *GameServerRunner) handleStatUpdating(ctx context.Context) {
     timer := time.NewTicker(time.Millisecond * 200)
     prev := g.stats
 
@@ -230,7 +224,7 @@ func (g *DummyGameServer) handleStatUpdating(ctx context.Context) {
 
 }
 
-func (g *DummyGameServer) closeDown() {
+func (g *GameServerRunner) closeDown() {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
@@ -239,7 +233,7 @@ func (g *DummyGameServer) closeDown() {
     g.logger.Info("setting state to closed", "stats", g.stats)
 }
 
-func (g *DummyGameServer) ready() {
+func (g *GameServerRunner) ready() {
     if g.stats.State == gameserverstats.GSStateReady {
         return
     }
@@ -252,7 +246,7 @@ func (g *DummyGameServer) ready() {
     g.logger.Info("setting state to ready", "stats", g.stats)
 }
 
-func (g *DummyGameServer) idle() {
+func (g *GameServerRunner) idle() {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
@@ -261,17 +255,17 @@ func (g *DummyGameServer) idle() {
     g.logger.Info("setting state to idle", "stats", g.stats)
 }
 
-func (g *DummyGameServer) Close() {
+func (g *GameServerRunner) Close() {
 	if g.listener != nil {
         g.done = true
 		g.listener.Close()
 	}
 }
 
-func (g *DummyGameServer) Wait() {
+func (g *GameServerRunner) Wait() {
 	<-g.doneChan
 }
 
-func (g *DummyGameServer) Loop() error {
+func (g *GameServerRunner) Loop() error {
 	return nil
 }

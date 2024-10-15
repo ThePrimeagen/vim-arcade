@@ -2,7 +2,7 @@ package sim
 
 import (
 	"context"
-	"fmt"
+	"encoding/binary"
 	"log/slog"
 	"math/rand"
 	"sync"
@@ -11,9 +11,12 @@ import (
 	"vim-arcade.theprimeagen.com/pkg/assert"
 )
 
-var clientId = 0
-func getNextId() []byte {
-    id := []byte(fmt.Sprintf("%016x", clientId))
+var clientId uint64 = 0
+func getNextId() [16]byte {
+    id := [16]byte{}
+    binary.BigEndian.PutUint64(id[:], clientId)
+    clientId++
+
     return id
 }
 
@@ -171,7 +174,7 @@ func (f TestingClientFactory) WithPort(port uint16) TestingClientFactory {
 }
 
 func (f *TestingClientFactory) New() *api.Client {
-	client := api.NewClient(f.host, f.port, [16]byte(getNextId()))
+	client := api.NewClient(f.host, f.port, getNextId())
 	f.logger.Info("factory connecting", "id", client.Id())
 	client.Connect(context.Background())
     client.WaitForReady()
