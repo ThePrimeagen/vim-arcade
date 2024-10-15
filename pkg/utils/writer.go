@@ -11,7 +11,7 @@ func WriteAll(data []byte, writer io.Writer) error {
             break
         }
 
-        n, err := writer.Write(data)
+	n, err := writer.Write(data[wrote:])
         if err != nil {
             return err
         }
