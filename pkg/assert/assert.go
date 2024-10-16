@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"reflect"
 	"runtime/debug"
 )
 
@@ -84,7 +85,7 @@ func Nil(item any, msg string, data ...any) {
 }
 
 func NotNil(item any, msg string, data ...any) {
-	if item == nil {
+	if item == nil || reflect.ValueOf(item).Kind() == reflect.Ptr && reflect.ValueOf(item).IsNil() {
 		slog.Error("NotNil#nil encountered")
 		runAssert(msg, data...)
 	}
