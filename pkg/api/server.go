@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -31,26 +30,6 @@ type GameServerRunner struct {
 	listener net.Listener
 	logger   *slog.Logger
 	mutex    sync.Mutex
-}
-
-// this is bad...
-// i just needed something to do reads with context
-func (s *GameServerRunner) readLines(reader io.Reader, id int, out chan<- []byte) {
-	bytes := make([]byte, 1000, 1000)
-	for {
-		s.logger.Info("readLines waiting", "conn-id", id)
-		n, err := reader.Read(bytes)
-		s.logger.Info("readLines read", "conn-id", id, "n", n, "err", err)
-		if err != nil {
-			break
-		}
-
-        // TODO this should be better at parsing data
-		out <- bytes[0:n]
-	}
-
-	out <- []byte{}
-	close(out)
 }
 
 func NewGameServerRunner(db gameserverstats.GSSRetriever, stats gameserverstats.GameServerConfig) *GameServerRunner {
@@ -102,34 +81,26 @@ func (g *GameServerRunner) incConnections(amount int) {
 
 }
 
-var connId = 0
-
-func (g *GameServerRunner) handleConnection(ctx context.Context, conn net.Conn) {
+func (g *GameServerRunner) handleConnection(ctx context.Context, conn net.Conn, id int) {
 	g.incConnections(1)
-	connId++
+    defer g.incConnections(-1)
 
-	datas := make(chan []byte, 10)
-	go g.readLines(conn, connId, datas)
-	go func() {
-        outer:
-        for {
-            select {
-            case <-ctx.Done():
-                break outer
-            case d := <-datas:
-                g.logger.Info("client data received", "data", d)
-                if packet.LegacyIsClientClosed(d) || packet.LegacyIsEmpty(d) {
-                    g.logger.Info("client sent close command")
-                    break outer
-                }
+    framer := packet.NewPacketFramer()
+    go packet.FrameWithReader(&framer, conn)
+
+    for {
+        select {
+        case <-ctx.Done():
+            return
+        case pkt := <-framer.C:
+            g.logger.Info("packet received", "packet", pkt.String())
+            if packet.IsCloseConnection(pkt) {
+                g.logger.Info("client sent close command")
+                return
             }
         }
+    }
 
-		// TODO develop a connection struct that has an id
-		g.logger.Warn("closing client")
-		g.incConnections(-1)
-		conn.Close()
-	}()
 }
 
 func (g *GameServerRunner) Run(outerCtx context.Context) error {
@@ -161,6 +132,10 @@ func (g *GameServerRunner) Run(outerCtx context.Context) error {
 
 	ch := g.innerListenForConnections(listener)
 
+    // TODO do we even need this now that we have ids being transfered up
+    // via client auth packet??
+    connId := 0
+
 outer:
 	for {
 
@@ -187,7 +162,8 @@ outer:
             assert.Assert(g.stats.State != gameserverstats.GSStateClosed, "somehow got a connection when state became closed", "stats", g.stats)
 
 			g.logger.Info("new dummy-server connection", "host", g.stats.Host, "port", g.stats.Port)
-			go g.handleConnection(ctx, c)
+			go g.handleConnection(ctx, c, connId)
+            connId++
             g.ready()
 		}
 

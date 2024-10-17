@@ -60,6 +60,23 @@ type PacketEncoder interface {
     Encoding() Encoding
 }
 
+func TypeToString(t PacketType) string {
+    // TODO could be a sweet short :)
+    switch t {
+    case PacketError: return "Error"
+    case PacketMessage: return "Message"
+    case PacketClientAuth: return "ClientAuth"
+    case PacketServerAuthResponse: return "ServerAuthResponse"
+    case PacketGameSettings: return "GameSettings"
+    case PacketItem: return "Item"
+    case PacketItemUpdate: return "ItemUpdate"
+    case PacketCloseConnection: return "CloseConnection"
+    default:
+        assert.Never("packet unknown", "type", t)
+    }
+    return ""
+}
+
 func CreateTypeAndEncodingByte(t PacketType, enc Encoding) byte {
     return uint8(enc << 6) | uint8(t)
 }
@@ -91,13 +108,22 @@ func CreateErrorPacket(err error) Packet {
     return PacketFromParts(PacketError, EncodingString, []byte(err.Error()))
 }
 
-func CreateServerAuthResponse(accepted bool) Packet {
+func CreateServerAuthResponse(accepted bool, id string) Packet {
     var b uint8 = 1
     if !accepted {
         b = 0
     }
 
-    return PacketFromParts(PacketServerAuthResponse, EncodingBytes, []byte{b})
+    data := []byte{ b }
+    data = append(data, []byte(id)...)
+
+    return PacketFromParts(PacketServerAuthResponse, EncodingBytes, data)
+}
+
+func CreateCloseConnection() Packet {
+    // i think i have a 0 packet size assert...
+    // lets find out
+    return PacketFromParts(PacketCloseConnection, EncodingBytes, []byte{})
 }
 
 func CreateClientAuth(id []byte) Packet {
@@ -112,9 +138,8 @@ func getPacketLength(data []byte) uint16 {
 func PacketFromBytes(data []byte) Packet {
     assert.Assert(data[0] == VERSION, "version mismatch: this should be handled by the framer before packet is created", "VERSION", VERSION, "provided", data[0])
 
-    // TODO will there ever be a 0 length buffer
     dataLen := len(data) - HEADER_SIZE
-    assert.Assert(dataLen > 0, "packets must contain some sort of data")
+    assert.Assert(dataLen >= 0, "packets must contain some sort of data")
 
     encodedLen := getPacketLength(data)
     assert.Assert(dataLen == int(encodedLen), "the data buffer provided has a length mismatch", "expected length", dataLen, "encoded length", encodedLen)
@@ -156,8 +181,10 @@ func (p *Packet) Data() []byte {
     return p.data[HEADER_SIZE:p.len]
 }
 
-func (p *Packet) Type() uint8 {
-    return p.data[TYPE_ENC_INDEX] & 0x3F
+// shit
+// shit
+func (p *Packet) Type() PacketType {
+    return PacketType(p.data[TYPE_ENC_INDEX] & 0x3F)
 }
 
 func (p *Packet) Encoding() Encoding {
@@ -174,7 +201,7 @@ func (p *Packet) Read(data []byte) (int, error) {
 
 func (p *Packet) String() string {
     prettyData := utils.PrettyPrintBytes(p.Data(), 16)
-    return fmt.Sprintf("Packet(v=%d, t=%d, enc=%d, len=%d) -> \"%s\"", p.data[0], p.Type(), p.Encoding(), p.Len(), prettyData)
+    return fmt.Sprintf("Packet(v=%d, t=%s, enc=%d, len=%d) -> \"%s\"", p.data[0], TypeToString(p.Type()), p.Encoding(), p.Len(), prettyData)
 }
 
 type PacketFramer struct {
@@ -251,4 +278,17 @@ func FrameWithReader(framer *PacketFramer, reader io.Reader) error {
 
         framer.Push(data[:n])
     }
+}
+
+func IsCloseConnection(p *Packet) bool {
+    return p.Type() == PacketCloseConnection
+}
+func IsServerAuth(p *Packet) bool {
+    return p.Type() == PacketServerAuthResponse
+}
+
+// ok here is the other verson of the same thing
+func ServerAuthGameId(p *Packet) string {
+    assert.Assert(p.Type() == PacketServerAuthResponse, "cannot cast the packet into a server auth packet", "packet", p.String())
+    return string(p.data[HEADER_SIZE + 1:])
 }

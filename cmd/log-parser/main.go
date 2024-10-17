@@ -70,8 +70,8 @@ func NewFilter(line string) Filter {
 }
 
 func (f *Filter) Filter(log LogLine) bool {
-    process := f.process == "*" || f.process == log.Log.Process
-    area := f.area == "*" || f.area == log.Log.Area
+    process := f.process == "*" || strings.Contains(log.Log.Process, f.process)
+    area := f.area == "*" || strings.Contains(log.Log.Area, f.area)
     msg := f.msg == "*" || strings.Contains(log.Log.Msg, f.msg)
 
     return process && area && msg

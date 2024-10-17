@@ -118,6 +118,7 @@ outer:
 		select {
 		case conn := <-ch:
 			go func() {
+                a.logger.Info("new net.tcp connection", "laddr", conn.LocalAddr(), "raddr", conn.RemoteAddr())
 				err := a.proxy.Add(NewConnection(conn))
                 if err != nil {
                     pkt := packet.CreateErrorPacket(err)

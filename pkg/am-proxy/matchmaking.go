@@ -85,17 +85,22 @@ func (m *MatchMakingServer) createAndWait(ctx context.Context) string {
 	return gameId
 }
 
-// TODO(v1) create no garbage ([]byte...)
-func (m *MatchMakingServer) matchmake(ctx context.Context, conn AMConnection) (string, error) {
-    connId := conn.Id()
+type GameConnectionInfo struct {
+    Id string
+    Addr string
+}
 
+// TODO(v1) create no garbage ([]byte...)
+func (m *MatchMakingServer) matchmake(ctx context.Context, conn AMConnection) (*GameConnectionInfo, error) {
+    connId := conn.Id()
 	gameId, err := m.servers.GetBestServer()
+
 	m.logger.Info("getting best server", "gameId", gameId, "error", err, "id", connId)
 	if errors.Is(err, servermanagement.NoBestServer) {
 		gameId = m.createAndWait(ctx)
 	} else if err != nil {
 		m.logger.Error("getting best server error", "error", err, "id", connId)
-		return "", err
+		return nil, err
 	}
 
 	gs, err := m.servers.GetConnectionString(gameId)
@@ -105,7 +110,10 @@ func (m *MatchMakingServer) matchmake(ctx context.Context, conn AMConnection) (s
 	// TODO probably better to just get a full server information
 	m.logger.Info("game server selected", "host:port", gs, "id", connId)
 
-    return gs, nil
+    return &GameConnectionInfo{
+        Id: gameId,
+        Addr: gs,
+    }, nil
 }
 
 func (m *MatchMakingServer) Close() {

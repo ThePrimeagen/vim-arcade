@@ -47,17 +47,18 @@ type hostAndPort struct {
 }
 
 type Client struct {
-	logger *slog.Logger
-	Host   string
-	Port   uint16
-	conn   net.Conn
-	closed bool
-	done   chan struct{}
-	ready  chan struct{}
-	mutex  sync.Mutex
-	State  ClientState
-	id     [16]byte
-    framer packet.PacketFramer
+	logger   *slog.Logger
+	Host     string
+	Port     uint16
+	conn     net.Conn
+	closed   bool
+	done     chan struct{}
+	ready    chan struct{}
+	mutex    sync.Mutex
+	State    ClientState
+	id       [16]byte
+	framer   packet.PacketFramer
+	ServerId string
 }
 
 func (c *Client) String() string {
@@ -72,7 +73,7 @@ func NewClientFromConnString(hostAndPort string, id [16]byte) Client {
 	parts := strings.SplitN(hostAndPort, ":", 2)
 	port, err := strconv.Atoi(parts[1])
 	assert.NoError(err, "client was provided a bad string", "hostAndPortString", hostAndPort)
-    logger := getClientLogger(id[:])
+	logger := getClientLogger(id[:])
 
 	return Client{
 		State:  CSInitialized,
@@ -80,11 +81,11 @@ func NewClientFromConnString(hostAndPort string, id [16]byte) Client {
 		Port:   uint16(port),
 		mutex:  sync.Mutex{},
 		logger: logger,
-		id: id,
+		id:     id,
 		done:   make(chan struct{}, 1),
 		ready:  make(chan struct{}, 1),
 		closed: false,
-        framer: packet.NewPacketFramer(),
+		framer: packet.NewPacketFramer(),
 	}
 }
 
@@ -94,17 +95,17 @@ func NewClient(host string, port uint16, id [16]byte) Client {
 		Host:   host,
 		Port:   uint16(port),
 		mutex:  sync.Mutex{},
-        logger: getClientLogger(id[:]),
+		logger: getClientLogger(id[:]),
 		done:   make(chan struct{}, 1),
 		ready:  make(chan struct{}, 1),
-		id: id,
+		id:     id,
 		closed: false,
-        framer: packet.NewPacketFramer(),
+		framer: packet.NewPacketFramer(),
 	}
 }
 
 func (d *Client) Id() string {
-    return hex.EncodeToString(d.id[:])
+	return hex.EncodeToString(d.id[:])
 }
 
 func (d *Client) Addr() string {
@@ -127,26 +128,28 @@ func (d *Client) Connect(ctx context.Context) error {
 	assert.NoError(err, "could not connect to server")
 	d.logger.Info("connected to the match making server", "conn", connStr)
 
-    // TODO emit event?
+	// TODO emit event?
 	d.State = CSAuthenticating
 
-    pkt := packet.CreateClientAuth(d.id[:])
+	pkt := packet.CreateClientAuth(d.id[:])
 
-    // TODO handle framer errors?
-    go packet.FrameWithReader(&d.framer, conn)
+	// TODO handle framer errors?
+	go packet.FrameWithReader(&d.framer, conn)
 
-    pkt.Into(conn)
-    rsp, ok := <-d.framer.C
+	pkt.Into(conn)
+	rsp, ok := <-d.framer.C
 
-    assert.Assert(ok, "expected channel to remain open")
-    assert.Assert(rsp != nil, "expected a packet")
-    assert.Assert(rsp.Type() == uint8(packet.PacketServerAuthResponse), "expected a auth response back")
-    assert.Assert(rsp.Len() == 1, "should be a single byte back indicating authentication")
-    assert.Assert(rsp.Data()[0] == 1, "should be authenticated")
+	assert.Assert(ok, "expected channel to remain open")
+	assert.Assert(rsp != nil, "expected a packet")
+	assert.Assert(rsp.Type() == packet.PacketServerAuthResponse, "expected a auth response back")
 
-    d.logger.Info("auth response", "rsp", rsp)
-    d.conn = conn
+    ////////////// wait
+	assert.Assert(rsp.Data()[0] == 1, "should be authenticated")
+
+	d.logger.Info("auth response", "rsp", rsp)
+	d.conn = conn
 	d.ready <- struct{}{}
+    d.ServerId = packet.ServerAuthGameId(rsp)
 
 	ctxReader := utils.NewContextReader(ctx)
 	go ctxReader.Read(conn)
@@ -176,14 +179,15 @@ func (d *Client) WaitForReady() {
 }
 
 func (d *Client) authenticate() error {
-    return d.Write(d.id[:])
+	return d.Write(d.id[:])
 }
 
 func (d *Client) Disconnect() {
 	d.closed = true
 	assert.NotNil(d.conn, "attempting to disconnect a non connected client")
 
-	n, err := d.conn.Write(packet.LegacyClientClose())
+	pkt := packet.CreateCloseConnection()
+	n, err := pkt.Into(d.conn)
 	if err != nil {
 		d.logger.Error("unable to write ClientClose to source", "n", n, "err", err)
 	}
