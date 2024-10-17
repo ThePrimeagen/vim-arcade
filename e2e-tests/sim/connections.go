@@ -167,6 +167,7 @@ func (f *TestingClientFactory) New() *dummy.DummyClient {
 	client := dummy.NewDummyClient(f.host, f.port)
 	f.logger.Info("factory connecting", "id", client.ConnId)
 	client.Connect(context.Background())
+    client.WaitForReady()
 	f.logger.Info("factory connected", "id", client.ConnId)
 	return &client
 }
