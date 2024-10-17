@@ -124,7 +124,7 @@ func (g *DummyGameServer) handleConnection(ctx context.Context, conn net.Conn) {
                 break outer
             case d := <-datas:
                 g.logger.Info("client data received", "data", d)
-                if packet.IsClientClosed(d) || packet.IsEmpty(d) {
+                if packet.LegacyIsClientClosed(d) || packet.LegacyIsEmpty(d) {
                     g.logger.Info("client sent close command")
                     break outer
                 }

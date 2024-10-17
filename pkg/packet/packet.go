@@ -187,9 +187,3 @@ func (p *PacketFramer) Run(ctx context.Context, r io.Reader) error {
     close(p.out)
     return err
 }
-
-
-
-
-
-
