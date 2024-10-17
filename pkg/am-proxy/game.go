@@ -24,3 +24,5 @@ type AMConnection interface {
 	Addr() string
     Id() string
 }
+
+type ConnectionFactory func(string) (AMConnection, error)
