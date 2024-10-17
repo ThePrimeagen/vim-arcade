@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
     // i am sure there is a better way to do this
 	"path"
@@ -17,8 +16,8 @@ import (
 func main() {
     logger := sim.CreateLogger("simple-sim")
 
-    ctx, cancel := context.WithCancel(context.Background())
-    sim.KillContext(cancel)
+    ctx := sim.TopLevelContext()
+    sim.KillContext(time.Second * 5)
 
     cwd, err := os.Getwd()
     assert.NoError(err, "unable to get cwd")
@@ -32,7 +31,7 @@ func main() {
     client := state.Factory.New()
     logger.Info("Created Client", "state", state.String())
 
-    defer cancel()
+    defer sim.CancelTopLevelContext()
     sim.AssertClient(&state, client);
     sim.AssertConnectionCount(&state, gameserverstats.GameServecConfigConnectionStats{
         Connections: 1,

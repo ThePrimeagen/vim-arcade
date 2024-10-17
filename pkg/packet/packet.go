@@ -181,8 +181,6 @@ func (p *Packet) Data() []byte {
     return p.data[HEADER_SIZE:p.len]
 }
 
-// shit
-// shit
 func (p *Packet) Type() PacketType {
     return PacketType(p.data[TYPE_ENC_INDEX] & 0x3F)
 }
@@ -287,7 +285,6 @@ func IsServerAuth(p *Packet) bool {
     return p.Type() == PacketServerAuthResponse
 }
 
-// ok here is the other verson of the same thing
 func ServerAuthGameId(p *Packet) string {
     assert.Assert(p.Type() == PacketServerAuthResponse, "cannot cast the packet into a server auth packet", "packet", p.String())
     return string(p.data[HEADER_SIZE + 1:])

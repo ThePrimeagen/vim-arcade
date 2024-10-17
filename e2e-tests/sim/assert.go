@@ -33,13 +33,14 @@ func AssertAllClientsSameServer(state *ServerState, clients []*api.Client) {
 }
 
 func AssertClient(state *ServerState, client *api.Client) {
-    slog.Info("assertClient", "client", client.String())
+    slog.Info("assertClient", "client", client.String(), "server", client.ServerId)
     config := state.Sqlite.GetById(client.ServerId)
-    assert.NotNil(config, "expected a config to be present", "client", client)
+    assert.NotNil(config, "expected a config to be present", "client", client, "serverId", client.ServerId)
 }
 
 func AssertConnectionsOnProxy(state *ServerState, count int) {
     slog.Info("AssertConnectionsOnProxy", "count", count)
+    //state.Proxy.
 }
 
 func AssertServerStats(state *ServerState, stats gameserverstats.GameServerConfig, dur time.Duration) {

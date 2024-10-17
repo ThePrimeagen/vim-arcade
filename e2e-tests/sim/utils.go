@@ -9,9 +9,28 @@ import (
 	prettylog "vim-arcade.theprimeagen.com/pkg/pretty-log"
 )
 
-func KillContext(cancel context.CancelFunc) {
+var created = false
+var ctx context.Context
+var cancel context.CancelFunc
+
+func CancelTopLevelContext() {
+    TopLevelContext()
+    cancel()
+}
+
+func TopLevelContext() context.Context {
+    if created == false {
+        ctx, cancel = context.WithCancel(context.Background())
+        created = true
+    }
+
+    return ctx
+}
+
+func KillContext(dur time.Duration) {
+    TopLevelContext()
     go func() {
-        time.Sleep(time.Second * 5)
+        time.Sleep(dur)
         cancel()
         assert.Never("context should never be killed with KillContext")
     }()
