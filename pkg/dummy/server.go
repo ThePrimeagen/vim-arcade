@@ -54,7 +54,7 @@ func (s *DummyGameServer) readLines(reader io.Reader, id int, out chan<- []byte)
 }
 
 func NewDummyGameServer(db gameserverstats.GSSRetriever, stats gameserverstats.GameServerConfig) *DummyGameServer {
-	logger := slog.Default().With("area", fmt.Sprintf("GameServer-%s", os.Getenv("ID")))
+	logger := slog.Default().With("area", "GameServer")
 	logger.Warn("new dummy game server", "ID", os.Getenv("ID"))
 
 	return &DummyGameServer{
@@ -192,7 +192,7 @@ outer:
 		case c := <-ch:
             assert.Assert(g.stats.State != gameserverstats.GSStateClosed, "somehow got a connection when state became closed", "stats", g.stats)
 
-			g.logger.Info("new dummy-server connection")
+			g.logger.Info("new dummy-server connection", "host", g.stats.Host, "port", g.stats.Port)
 			go g.handleConnection(ctx, c)
             g.ready()
 		}
