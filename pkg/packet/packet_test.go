@@ -13,7 +13,7 @@ import (
 type TestEncoding struct { }
 
 func (t *TestEncoding) Encoding() packet.Encoding {
-    return packet.EncodingCustom
+    return packet.EncodingString
 }
 
 func (t *TestEncoding) Type() uint8 {
