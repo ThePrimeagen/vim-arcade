@@ -1,7 +1,6 @@
 package packet
 
 import (
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -9,6 +8,7 @@ import (
 	"log/slog"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
+	prettylog "vim-arcade.theprimeagen.com/pkg/pretty-log"
 	"vim-arcade.theprimeagen.com/pkg/utils"
 )
 
@@ -43,6 +43,10 @@ const (
     PacketMessage
     PacketClientAuth
     PacketServerAuthResponse
+    PacketGameSettings
+    PacketItem
+    PacketItemUpdate
+    PacketCloseConnection
 )
 
 type Packet struct {
@@ -176,15 +180,17 @@ func (p *Packet) String() string {
 type PacketFramer struct {
     buf []byte
     idx int
+    C chan *Packet
 }
 
 func NewPacketFramer() PacketFramer {
     return PacketFramer{
         buf: make([]byte, PACKET_PAYLOAD_SIZE, PACKET_PAYLOAD_SIZE),
+        C: make(chan *Packet, 10),
     }
 }
 
-func (p *PacketFramer) Push(data []byte) {
+func (p *PacketFramer) Push(data []byte) error {
     n := copy(p.buf[p.idx:], data)
 
     if n < len(data) {
@@ -193,10 +199,19 @@ func (p *PacketFramer) Push(data []byte) {
 
     p.idx += len(data)
 
-    slog.Default().Error("PacketFramer received bytes", "len", p.idx, "pretty bytes", utils.PrettyPrintBytes(p.buf, p.idx))
+    prettylog.Trace(slog.Default(),"PacketFramer received bytes", "len", p.idx, "pretty bytes", utils.PrettyPrintBytes(p.buf, p.idx))
+
+    for {
+        pkt, err := p.pull()
+        if err != nil || pkt == nil {
+            return err
+        }
+
+        p.C <- pkt
+    }
 }
 
-func (p *PacketFramer) Pull() (*Packet, error) {
+func (p *PacketFramer) pull() (*Packet, error) {
     if p.idx < HEADER_SIZE {
         return nil, nil
     }
@@ -226,55 +241,14 @@ func (p *PacketFramer) Pull() (*Packet, error) {
     return nil, nil
 }
 
-func FrameReader(ctx context.Context, r io.Reader, out chan *Packet) error {
-    b := make([]byte, PACKET_MAX_SIZE, PACKET_MAX_SIZE)
-    framer := NewPacketFramer()
-
+func FrameWithReader(framer *PacketFramer, reader io.Reader) error {
+    data := make([]byte, 100, 100)
     for {
-        n, err := r.Read(b)
-        select {
-        case <-ctx.Done():
-            break;
-        default:
-        }
-
+        n, err := reader.Read(data)
         if err != nil {
             return err
         }
 
-        framer.Push(b[:n])
-        for {
-            p, err := framer.Pull()
-            if err != nil || p == nil {
-                return err
-            }
-
-            out <- p
-        }
+        framer.Push(data[:n])
     }
 }
-
-func ReadOne(reader io.Reader) (*Packet, error) {
-    // TODO probably make this pooled
-	b := make([]byte, PACKET_MAX_SIZE, PACKET_MAX_SIZE)
-	n, err := reader.Read(b)
-	if err != nil {
-		return nil, err
-	}
-
-	framer := NewPacketFramer()
-	framer.Push(b[:n])
-	return framer.Pull()
-}
-
-func RequestResponse(enc PacketEncoder, conn io.ReadWriter) (*Packet, error) {
-    p := NewPacket(enc)
-    n, err := p.Into(conn)
-    assert.Assert(n == p.len, "i have been reliably told that Write should write all the bytes")
-    if err != nil {
-        return nil, err
-    }
-
-    return ReadOne(conn)
-}
-

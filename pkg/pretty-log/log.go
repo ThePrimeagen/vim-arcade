@@ -174,6 +174,9 @@ func PrettyLine(data map[string]any, colorize func(code int, value string) strin
 	assert.Assert(ok, "must provide area for my delicious pretty log")
 
 	level := data["level"].(string)
+    if level == "DEBUG-4" {
+        level = "TRACE"
+    }
 
 	switch level {
 	case "TRACE":

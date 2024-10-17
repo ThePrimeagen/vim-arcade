@@ -57,6 +57,7 @@ type Client struct {
 	mutex  sync.Mutex
 	State  ClientState
 	id     [16]byte
+    framer packet.PacketFramer
 }
 
 func (c *Client) String() string {
@@ -83,6 +84,7 @@ func NewClientFromConnString(hostAndPort string, id [16]byte) Client {
 		done:   make(chan struct{}, 1),
 		ready:  make(chan struct{}, 1),
 		closed: false,
+        framer: packet.NewPacketFramer(),
 	}
 }
 
@@ -97,6 +99,7 @@ func NewClient(host string, port uint16, id [16]byte) Client {
 		ready:  make(chan struct{}, 1),
 		id: id,
 		closed: false,
+        framer: packet.NewPacketFramer(),
 	}
 }
 
@@ -129,8 +132,17 @@ func (d *Client) Connect(ctx context.Context) error {
 
     pkt := packet.CreateClientAuth(d.id[:])
 
-    rsp, err := packet.RequestResponse(&pkt, conn)
-	assert.NoError(err, "unable to req/res auth tokens from client")
+    // TODO handle framer errors?
+    go packet.FrameWithReader(&d.framer, conn)
+
+    pkt.Into(conn)
+    rsp, ok := <-d.framer.C
+
+    assert.Assert(ok, "expected channel to remain open")
+    assert.Assert(rsp != nil, "expected a packet")
+    assert.Assert(rsp.Type() == uint8(packet.PacketServerAuthResponse), "expected a auth response back")
+    assert.Assert(rsp.Len() == 1, "should be a single byte back indicating authentication")
+    assert.Assert(rsp.Data()[0] == 1, "should be authenticated")
 
     d.logger.Info("auth response", "rsp", rsp)
     d.conn = conn

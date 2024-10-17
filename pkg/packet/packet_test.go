@@ -2,9 +2,9 @@ package packet_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
-	"sync"
+	"errors"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -59,13 +59,17 @@ func TestPacketFramer(t *testing.T) {
     framer.Push(buf.Bytes())
 
     for range BUF_COUNT {
-        pkt, err := framer.Pull()
-        require.NoError(t, err)
+        pkt := <-framer.C
         require.Equal(t, pkt.Data(), testEncoding)
     }
 
-    pkt, err := framer.Pull()
-    require.NoError(t, err)
+    var pkt *packet.Packet
+    select {
+    case p := <-framer.C:
+        pkt = p
+    default:
+    }
+
     require.Equal(t, pkt, (*packet.Packet)(nil))
 }
 
@@ -83,33 +87,30 @@ func TestReaderFramer(t *testing.T) {
         require.NoError(t, err, "unable to write into buffer")
     }
 
-    ch := make(chan *packet.Packet, 10)
-    ctx, cancel := context.WithCancel(context.Background())
+    framer := packet.NewPacketFramer()
 
     var err error = nil
-    wait := sync.WaitGroup{}
-    wait.Add(1)
     go func() {
-        err = packet.FrameReader(ctx, buf, ch)
-        wait.Done()
+        err = packet.FrameWithReader(&framer, buf)
+        if !errors.Is(err, io.EOF) {
+            require.NoError(t, err)
+        }
     }()
 
     for range BUF_COUNT {
-        pkt := <- ch
+        pkt := <- framer.C
         require.Equal(t, pkt.Data(), testEncoding)
     }
 
     var pkt *packet.Packet = nil
     select {
-    case pkt = <- ch:
+    case pkt = <- framer.C:
     default:
     }
     require.Equal(t, pkt, (*packet.Packet)(nil))
-
-    cancel()
-    wait.Wait()
-
-    require.NoError(t, err)
+    if !errors.Is(err, io.EOF) {
+        require.NoError(t, err)
+    }
 }
 
 func TestPacketFromParts(t *testing.T) {
