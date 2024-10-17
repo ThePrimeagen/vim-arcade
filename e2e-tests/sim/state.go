@@ -6,24 +6,24 @@ import (
 	"strings"
 	"time"
 
+	amproxy "vim-arcade.theprimeagen.com/pkg/am-proxy"
 	assert "vim-arcade.theprimeagen.com/pkg/assert"
 	"vim-arcade.theprimeagen.com/pkg/dummy"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
-	"vim-arcade.theprimeagen.com/pkg/matchmaking"
 	servermanagement "vim-arcade.theprimeagen.com/pkg/server-management"
 )
 
 type ServerState struct {
-	Sqlite      *gameserverstats.Sqlite
-	Server      *servermanagement.LocalServers
-	MatchMaking *matchmaking.MatchMakingServer
-	Port        int
-	Factory     *TestingClientFactory
-	Conns       ConnMap
+	Sqlite  *gameserverstats.Sqlite
+	Server  *servermanagement.LocalServers
+	Proxy   *amproxy.AMTCPProxy
+	Port    int
+	Factory *TestingClientFactory
+	Conns   ConnMap
 }
 
 func (s *ServerState) Close() {
-	s.MatchMaking.Close()
+	s.Proxy.Close()
 	s.Server.Close()
 
 	err := s.Sqlite.Close()
@@ -54,35 +54,35 @@ Servers
 }
 
 type ServerStateWaiter struct {
-    Stats gameserverstats.GSSRetriever
-    startConfigs []gameserverstats.GameServerConfig
-    conns gameserverstats.GameServecConfigConnectionStats
-    startTime time.Time
-    logger *slog.Logger
+	Stats        gameserverstats.GSSRetriever
+	startConfigs []gameserverstats.GameServerConfig
+	conns        gameserverstats.GameServecConfigConnectionStats
+	startTime    time.Time
+	logger       *slog.Logger
 }
 
 func NewStateWaiter(stats gameserverstats.GSSRetriever) *ServerStateWaiter {
-    return &ServerStateWaiter{
-        Stats: stats,
-        startConfigs: []gameserverstats.GameServerConfig{},
-        logger: slog.Default().With("area", "StateWaiter"),
-    }
+	return &ServerStateWaiter{
+		Stats:        stats,
+		startConfigs: []gameserverstats.GameServerConfig{},
+		logger:       slog.Default().With("area", "StateWaiter"),
+	}
 }
 
 func (s *ServerStateWaiter) StartRound() gameserverstats.GameServecConfigConnectionStats {
 	startConfigs, err := s.Stats.GetAllGameServerConfigs()
 	assert.NoError(err, "StartRound: unable to get all server configs")
-    s.startConfigs = startConfigs
-    s.conns = s.Stats.GetTotalConnectionCount()
-    s.startTime = time.Now()
+	s.startConfigs = startConfigs
+	s.conns = s.Stats.GetTotalConnectionCount()
+	s.startTime = time.Now()
 
-    return s.conns
+	return s.conns
 }
 
 func (s *ServerStateWaiter) WaitForRound(added, removed int, t time.Duration) {
-    s.conns.Connections += added - removed
-    s.conns.ConnectionsRemoved += removed
-    s.conns.ConnectionsAdded += added
+	s.conns.Connections += added - removed
+	s.conns.ConnectionsRemoved += removed
+	s.conns.ConnectionsAdded += added
 
 	start := time.Now()
 	for time.Now().Sub(start).Milliseconds() < t.Milliseconds() {
@@ -97,8 +97,8 @@ func (s *ServerStateWaiter) WaitForRound(added, removed int, t time.Duration) {
 
 func (s *ServerStateWaiter) AssertRound(adds, removes []*dummy.DummyClient) time.Duration {
 	endConfig, err := s.Stats.GetAllGameServerConfigs()
-    assert.NoError(err, "AssertRound: unable to get configs")
-    AssertServerState(s.startConfigs, endConfig, adds, removes)
+	assert.NoError(err, "AssertRound: unable to get configs")
+	AssertServerState(s.startConfigs, endConfig, adds, removes)
 
-    return time.Now().Sub(s.startTime)
+	return time.Now().Sub(s.startTime)
 }
