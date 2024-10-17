@@ -159,11 +159,14 @@ func (f *TestingClientFactory) CreateBatchedConnectionsWithWait(count int, wait 
 }
 
 func (f *TestingClientFactory) CreateBatchedConnections(count int) []*api.Client {
+
 	wait := &sync.WaitGroup{}
+    wait.Add(count)
 	clients := f.CreateBatchedConnectionsWithWait(count, wait)
 
 	f.logger.Info("CreateBatchedConnections waiting", "count", count)
 	wait.Wait()
+    f.logger.Info("CreateBatchedConnections finished", "count", count)
 
 	return clients
 }

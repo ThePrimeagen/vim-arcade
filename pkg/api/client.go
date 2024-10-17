@@ -142,14 +142,14 @@ func (d *Client) Connect(ctx context.Context) error {
 	assert.Assert(ok, "expected channel to remain open")
 	assert.Assert(rsp != nil, "expected a packet")
 	assert.Assert(rsp.Type() == packet.PacketServerAuthResponse, "expected a auth response back")
-
-    ////////////// wait
 	assert.Assert(rsp.Data()[0] == 1, "should be authenticated")
 
-	d.logger.Info("auth response", "rsp", rsp)
+    serverId := packet.ServerAuthGameId(rsp)
+	d.logger.Info("auth response", "rsp", rsp, "serverId", serverId, "serverIdLen", len(serverId))
 	d.conn = conn
+    d.ServerId = serverId
+
 	d.ready <- struct{}{}
-    d.ServerId = packet.ServerAuthGameId(rsp)
 
 	ctxReader := utils.NewContextReader(ctx)
 	go ctxReader.Read(conn)

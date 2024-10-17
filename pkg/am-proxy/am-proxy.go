@@ -184,6 +184,7 @@ func (m *AMProxy) handleConnectionLifecycles(w *AMConnectionWrapper) {
 			}
 		case <-w.ctx.Done():
 			m.logger.Info("connection finished", "server-id", w.gsId)
+            return
 		}
 	}
 }

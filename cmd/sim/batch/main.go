@@ -1,8 +1,8 @@
 package main
 
 import (
-	"context"
 	"os"
+    // i am sure there is a better way to do this
 	"path"
 	"time"
 
@@ -12,12 +12,12 @@ import (
 	servermanagement "vim-arcade.theprimeagen.com/pkg/server-management"
 )
 
-func main() {
-    logger := sim.CreateLogger("batch")
-    logger.Info("Welcome to costco", "count", 15)
 
-    ctx, cancel := context.WithCancel(context.Background())
-    sim.KillContext(cancel)
+func main() {
+    logger := sim.CreateLogger("simple-sim")
+
+    ctx := sim.TopLevelContext()
+    sim.KillContext(time.Second * 7)
 
     cwd, err := os.Getwd()
     assert.NoError(err, "unable to get cwd")
@@ -27,16 +27,32 @@ func main() {
         MaxLoad: 0.9,
     })
 
-    logger.Info("Creating batched connections", "count", 15)
-    clients := state.Factory.CreateBatchedConnections(15)
-    logger.Info("Finished creating batched connections")
-    defer cancel()
+    CLIENT_COUNT := 15
+    logger.Info("Created environment", "state", state.String())
+    clients := state.Factory.CreateBatchedConnections(CLIENT_COUNT)
+    logger.Info("Created Client", "state", state.String())
 
-    sim.AssertClients(&state, clients);
-    sim.AssertAllClientsSameServer(&state, clients);
+    defer sim.CancelTopLevelContext()
+    for _, c := range clients {
+        sim.AssertClient(&state, c);
+    }
+
     sim.AssertConnectionCount(&state, gameserverstats.GameServecConfigConnectionStats{
         Connections: 15,
         ConnectionsAdded: 15,
         ConnectionsRemoved: 0,
     }, time.Second * 5)
+
+    for i := range CLIENT_COUNT {
+        c := clients[i]
+        c.Disconnect()
+        stats := gameserverstats.GameServerConfig{
+            Id: c.ServerId,
+            Connections: 15 - (i + 1),
+            ConnectionsAdded: 15,
+            ConnectionsRemoved: i + 1,
+        }
+        sim.AssertServerStats(&state, stats, time.Second * 5)
+    }
 }
+
