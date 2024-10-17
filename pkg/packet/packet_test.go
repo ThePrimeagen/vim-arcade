@@ -3,11 +3,10 @@ package packet_test
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/errgroup"
 	"vim-arcade.theprimeagen.com/pkg/packet"
 )
 
@@ -56,25 +55,58 @@ func TestPacketFramer(t *testing.T) {
     }
 
     framer := packet.NewPacketFramer()
-    ctx, cancel := context.WithCancel(context.Background())
+    framer.Push(buf.Bytes())
 
-    g := errgroup.Group{}
-    g.Go(func() error {
-        return framer.Run(ctx, buf)
-    })
-
-    count := 0
-    for pkt := range framer.Out() {
-        fmt.Printf("pkt: \"%s\" expt: \"%s\"\n", string(pkt.Data()), string(testEncoding))
+    for range BUF_COUNT {
+        pkt, err := framer.Pull()
+        require.NoError(t, err)
         require.Equal(t, pkt.Data(), testEncoding)
-        count++
-
-        if count == 5 {
-            cancel()
-        }
     }
 
+    pkt, err := framer.Pull()
+    require.NoError(t, err)
+    require.Equal(t, pkt, (*packet.Packet)(nil))
+}
+
+func TestReaderFramer(t *testing.T) {
+    te := TestEncoding{}
+    p := packet.NewPacket(&te)
+
+    data := make([]byte, 0, 100)
+    buf := bytes.NewBuffer(data)
+
+    BUF_COUNT := 5
+
+    for range BUF_COUNT {
+        _, err := p.Into(buf)
+        require.NoError(t, err, "unable to write into buffer")
+    }
+
+    ch := make(chan *packet.Packet, 10)
+    ctx, cancel := context.WithCancel(context.Background())
+
+    var err error = nil
+    wait := sync.WaitGroup{}
+    wait.Add(1)
+    go func() {
+        err = packet.FrameReader(ctx, buf, ch)
+        wait.Done()
+    }()
+
+    for range BUF_COUNT {
+        pkt := <- ch
+        require.Equal(t, pkt.Data(), testEncoding)
+    }
+
+    var pkt *packet.Packet = nil
+    select {
+    case pkt = <- ch:
+    default:
+    }
+    require.Equal(t, pkt, (*packet.Packet)(nil))
+
     cancel()
-    require.Equal(t, count, BUF_COUNT)
-    require.NoError(t, g.Wait())
+    wait.Wait()
+
+    require.NoError(t, err)
 }

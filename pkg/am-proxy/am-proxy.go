@@ -1,23 +1,94 @@
 package amproxy
 
 import (
+	"context"
+	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"sync"
+
+	"vim-arcade.theprimeagen.com/pkg/utils"
 )
 
-type AMProxyParams struct {
-	Port   int
-	logger *slog.Logger
+var AMProxyDisallowed = fmt.Errorf("unable to connnect, please try again later")
+
+type AMConnection interface {
+	io.Reader
+	io.Writer
+	io.Closer
+	Addr() string
 }
 
-func (m *AMProxyParams) Close() {
-	m.logger.Warn("closing down")
-	if m.listener != nil {
-		err := m.listener.Close()
-		if err != nil {
-			m.logger.Error("closing tcp server: error", "error", err)
-		}
+type AMConnectionWrapper struct {
+	conn   AMConnection
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+type AMProxy struct {
+	servers GameServer
+
+	logger      *slog.Logger
+	connections []*AMConnectionWrapper
+	open        []int
+	ctx         context.Context
+	mutex       sync.Mutex
+}
+
+func NewAMProxy(ctx context.Context, servers GameServer) AMProxy {
+	return AMProxy{
+		servers: servers,
+
+		logger:      slog.Default().With("area", "AMProxy"),
+		connections: []*AMConnectionWrapper{},
+		open:        []int{},
+		ctx:         ctx,
+        mutex: sync.Mutex{},
 	}
+}
+
+// do my basic connection stuff
+func (m *AMProxy) allowedToConnect(conn AMConnection) error {
+	return nil
+}
+
+func (m *AMProxy) Add(conn AMConnection) error {
+	if err := m.allowedToConnect(conn); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithCancel(m.ctx)
+	wrapper := &AMConnectionWrapper{
+		conn:   conn,
+		ctx:    ctx,
+		cancel: cancel,
+	}
+
+    m.mutex.Lock()
+    defer m.mutex.Unlock()
+
+	var idx int
+	if len(m.open) > 0 {
+		idx = m.open[len(m.open)-1]
+		m.open = m.open[:len(m.open)-1]
+		m.connections[idx] = wrapper
+	} else {
+		idx = len(m.connections)
+		m.connections = append(m.connections, wrapper)
+	}
+
+	go m.handleConnection(wrapper, idx)
+
+	return nil
+}
+
+func (m *AMProxy) handleConnection(w *AMConnectionWrapper, idx int) {
+}
+
+func (m *AMProxy) Close() {
+	m.logger.Warn("closing down")
+
 }
 
 // Note for later..
