@@ -1,132 +1,120 @@
 package packet
 
 import (
-	"bytes"
+	"context"
+	"encoding/binary"
+	"errors"
 	"fmt"
-	"strconv"
-	"strings"
+	"io"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
+	"vim-arcade.theprimeagen.com/pkg/utils"
 )
 
-type PacketType int
+const VERSION = 1
+const HEADER_SIZE = 4
+const HEADER_LENGTH_OFFSET = 2
+const PACKET_MAX_SIZE = 1024
+const PACKET_PAYLOAD_SIZE = 1024 - HEADER_SIZE
 
-const (
-    ClientHello PacketType = iota
-    ClientClosed
-
-    MatchMakingRedirect
-)
+var PacketMaxSizeExceeded = errors.New(fmt.Sprintf("Packet length has exceeded allowed size of %d", PACKET_PAYLOAD_SIZE - 1))
 
 type Packet struct {
-    Type PacketType
-    Data []byte
+    data []byte
+    len int
 }
 
-func NewPacket(data []byte) Packet {
-    // I can return the type and everything here..
-    return Packet {
-        Data: data,
-        Type: ClientClosed,
-    }
+type PacketEncoder interface {
+    io.Reader
+    Type() uint8
+    Encoding() uint8
 }
 
-// this could be a lot better...
-type PacketParser struct {
+func NewPacket(encoder PacketEncoder) Packet {
+    b := make([]byte, PACKET_MAX_SIZE, PACKET_MAX_SIZE)
+
+    enc := b[HEADER_SIZE:]
+    n, err := encoder.Read(enc)
+    assert.NoError(err, "i should never fail on encoding a packet")
+    assert.Assert(n != PACKET_PAYLOAD_SIZE, "max packet size exceeded", "MAX_SIZE", PACKET_PAYLOAD_SIZE)
+
+    b[0] = VERSION
+    b[1] = encoder.Encoding() << 7 | encoder.Type()
+
+    binary.BigEndian.PutUint16(b[2:], uint16(n))
+
+    return Packet{data: b, len: n}
+}
+
+func (p *Packet) Into(writer io.Writer) error {
+    // TODO v2
+    // reconsider just trusting the science and if it fails, assert and report
+    // to golang's github
+    return utils.WriteAll(p.data[:p.len], writer)
+}
+
+type PacketFramer struct {
     buf []byte
-    in <-chan Packet
-    out chan<- Packet
-    errIn <-chan error
-    errOut chan<- error
+    idx int
+    out chan []byte
 }
 
-func NewPacketParser() PacketParser {
-    ch := make(chan Packet, 10)
-    err := make(chan error, 10)
-
-    return PacketParser{
-        buf: []byte{},
-        in: ch,
-        out: ch,
-        errIn: err,
-        errOut: err,
+func NewPacketFramer() PacketFramer {
+    return PacketFramer{
+        buf: make([]byte, PACKET_PAYLOAD_SIZE, PACKET_PAYLOAD_SIZE),
+        out: make(chan []byte, 10),
     }
 }
 
-var newLine = []byte("\n")
-func (p *PacketParser) Push(data []byte) {
-    p.buf = append(p.buf, data...)
-
-    for {
-        idx := bytes.Index(p.buf, newLine)
-        if idx == -1 {
-            break
+func (p *PacketFramer) read() error {
+    if len(p.buf) > HEADER_SIZE {
+        packetLen := binary.BigEndian.Uint16(p.buf[HEADER_LENGTH_OFFSET:])
+        if packetLen == PACKET_PAYLOAD_SIZE {
+            return PacketMaxSizeExceeded
         }
 
-        buf := p.buf[0:idx]
-        p.buf = p.buf[idx + 1:]
-        p.out <- NewPacket(buf)
+        if packetLen + HEADER_SIZE <= uint16(p.idx) {
+            out := make([]byte, packetLen, packetLen)
+            copy(out, p.buf[:packetLen])
+            copy(p.buf, p.buf[packetLen + HEADER_SIZE:])
+            p.idx = p.idx - (int(packetLen) + HEADER_SIZE)
+
+            p.out <- out
+        }
     }
+
+    return nil
 }
 
-func (p *PacketParser) OnError() <-chan error {
-    assert.NotNil(p.errIn, "OnError has been called already")
+func (p *PacketFramer) Run(ctx context.Context, r io.Reader) error {
+    reader := utils.NewContextReader(ctx)
+    reader.Read(r)
 
-    ch := p.errIn
-    p.errIn = nil
+    outer:
+    for {
+        select {
+        case d := <-reader.Out:
+            read := 0
+            for read < len(d) {
+                n := copy(p.buf[p.idx:], d[read:])
+                p.idx += n
+                read += n
+                p.read()
+            }
 
-    return ch
-}
+        case e := <-reader.Err:
+            return e
 
-func (p *PacketParser) OnData() <-chan Packet {
-    assert.NotNil(p.in, "OnData has been called already")
-
-    ch := p.in
-    p.in = nil
-
-    return ch
-}
-
-func MakeClientHello(id string) Packet {
-    return Packet {
-        Type: ClientHello,
-        Data: []byte(fmt.Sprintf("client:%s\n", id)),
+        case <-ctx.Done():
+            break outer
+        }
     }
+
+    return nil
 }
 
-func MakeClientClose() Packet {
-    return Packet {
-        Type: ClientClosed,
-        Data: []byte("close\n"),
-    }
-}
 
-func IsEmpty(data []byte) bool {
-    return len(data) == 0
-}
 
-func IsClientClosed(data []byte) bool {
-    return string(data) == "close"
-}
 
-func LegacyClientId(id string) []byte {
-    return []byte(fmt.Sprintf("hello:%s", id))
-}
 
-func ParseClientId(packet string) (int, error) {
-    assert.Assert(strings.HasPrefix(packet, "hello:"), "passed in a non hello packet to ParseClientId", "packet", packet)
-    return strconv.Atoi(strings.TrimSpace(packet[6:]))
-}
-
-func LegacyClientClose() []byte {
-    return []byte("close")
-}
-
-func LegacyIsEmpty(data []byte) bool {
-    return len(data) == 0
-}
-
-func LegacyIsClientClosed(data []byte) bool {
-    return string(data) == "close"
-}
 
