@@ -58,9 +58,9 @@ func (l *LocalServers) GetBestServer() (string, error) {
 var id = 0
 
 func (l *LocalServers) CreateNewServer(ctx context.Context) (string, error) {
-    dummyServer := os.Getenv("DUMMY_SERVER")
+    dummyServer := os.Getenv("GAME_SERVER")
     if dummyServer == "" {
-        dummyServer = "./cmd/dummy-server/main.go"
+        dummyServer = "./cmd/api-server/main.go"
     }
 	outId := id
     // TODO i bet there is a better way of doing this...

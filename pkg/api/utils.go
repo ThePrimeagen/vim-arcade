@@ -1,6 +1,8 @@
 package api
 
-import "net"
+import (
+	"net"
+)
 
 // GetFreePort asks the kernel for a free open port that is ready to use.
 func GetFreePort() (port int, err error) {
@@ -24,5 +26,4 @@ func GetHostAndPort() (string, int) {
     }
     return "0.0.0.0", port
 }
-
 

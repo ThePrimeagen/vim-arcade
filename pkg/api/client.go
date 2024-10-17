@@ -129,8 +129,6 @@ func (d *Client) Connect(ctx context.Context) error {
 
     pkt := packet.CreateClientAuth(d.id[:])
 
-    // TODO this is where i left off, i hope you haven't forgotten what you
-    // are doing after a weekend of kids soccer...
     rsp, err := packet.RequestResponse(&pkt, conn)
 	assert.NoError(err, "unable to req/res auth tokens from client")
 

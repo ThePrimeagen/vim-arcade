@@ -30,9 +30,6 @@ func main() {
     client := state.Factory.New()
     logger.Info("Created Client", "state", state.String())
 
-    err = client.Connect(ctx)
-    assert.NoError(err, "unable to authenticate client")
-
     defer cancel()
 
     sim.AssertClient(&state, client);

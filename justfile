@@ -5,12 +5,12 @@ clean:
     rm -rf ./e2e-tests/data/*
 
 e2e-debug:
-    DEBUG_LOG=/tmp/mm-testing DUMMY_SERVER="{{justfile_directory()}}/cmd/dummy-server/main.go" go test -v ./e2e-tests/... &
+    DEBUG_LOG=/tmp/mm-testing GAME_SERVER="{{justfile_directory()}}/cmd/api-server/main.go" go test -v ./e2e-tests/... &
     tail -F /tmp/mm-testing &
     wait
 
 e2e:
-    DUMMY_SERVER="{{justfile_directory()}}/cmd/dummy-server/main.go" go test ./e2e-tests/...
+    GAME_SERVER="{{justfile_directory()}}/cmd/api-server/main.go" go test ./e2e-tests/...
 
 kill-tests:
     ps aux | grep "go test" | grep -v "grep" | awk '{print $2}' | xargs -I {} kill -9 {}

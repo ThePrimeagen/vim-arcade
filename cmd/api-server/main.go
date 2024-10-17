@@ -7,9 +7,9 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"vim-arcade.theprimeagen.com/pkg/api"
 	"vim-arcade.theprimeagen.com/pkg/assert"
 	"vim-arcade.theprimeagen.com/pkg/ctrlc"
-	"vim-arcade.theprimeagen.com/pkg/dummy"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
 	prettylog "vim-arcade.theprimeagen.com/pkg/pretty-log"
 )
@@ -37,7 +37,7 @@ func main() {
 
     db := gameserverstats.NewSqlite(sqlitePath)
     db.SetSqliteModes()
-    host, port := dummy.GetHostAndPort()
+    host, port := api.GetHostAndPort()
 
     config := gameserverstats.GameServerConfig {
         State: gameserverstats.GSStateReady,
@@ -49,7 +49,7 @@ func main() {
     }
 
     ll.Info("creating server", "port", port, "host", host)
-    server := dummy.NewDummyGameServer(db, config)
+    server := api.NewGameServerRunner(db, config)
     ctx, cancel := context.WithCancel(context.Background())
     ctrlc.HandleCtrlC(cancel)
 

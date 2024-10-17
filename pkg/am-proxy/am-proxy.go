@@ -114,7 +114,9 @@ func (m *AMProxy) removeConnection(w *AMConnectionWrapper, report error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	m.connections = append(m.connections[:w.idx], m.connections[w.idx+1:]...)
+	//m.connections = append(m.connections[:w.idx], m.connections[w.idx+1:]...)
+    m.connections[w.idx] = nil
+    m.open = append(m.open, w.idx)
 }
 
 func (m *AMProxy) handleConnection(w *AMConnectionWrapper) {
@@ -144,6 +146,13 @@ func (m *AMProxy) handleConnection(w *AMConnectionWrapper) {
 	}
 
     w.gameServerConn = gameConn
+
+    resp := packet.CreateServerAuthResponse(true)
+    _, err = resp.Into(w.conn)
+	if err != nil {
+		m.removeConnection(w, err)
+		return
+	}
 
     // TODO i probably need to handle a whole set of conditions here...
     // i mean i don't even forward out errors from one side to the other

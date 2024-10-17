@@ -415,6 +415,7 @@ func CreateLoggerFromEnv(out *os.File) *slog.Logger {
 	if out == nil {
 		out = CreateLoggerSink()
 	}
+
 	if os.Getenv("DEBUG_TYPE") == "pretty" {
         return SetProgramLevelPrettyLogger(NewParams(out))
 	}

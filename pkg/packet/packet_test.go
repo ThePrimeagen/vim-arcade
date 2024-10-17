@@ -3,6 +3,7 @@ package packet_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"sync"
 	"testing"
 
@@ -109,4 +110,29 @@ func TestReaderFramer(t *testing.T) {
     wait.Wait()
 
     require.NoError(t, err)
+}
+
+func TestPacketFromParts(t *testing.T) {
+    p := packet.CreateClientAuth([]byte{
+        0, 4, 2, 0,
+        1, 3, 3, 7,
+        0, 0, 4, 2,
+        0, 0, 6, 9,
+    })
+
+    data := make([]byte, 0, 100)
+    buf := bytes.NewBuffer(data)
+
+    var err error = nil
+    _, err = p.Into(buf)
+    require.NoError(t, err, "unable to write into buffer")
+
+    pkt := buf.Bytes()
+    pktFromBytes := packet.PacketFromBytes(pkt)
+    bLen := binary.BigEndian.Uint16(pkt[2:])
+
+    require.Equal(t, pktFromBytes, p)
+    require.Equal(t, pkt[0], packet.VERSION)
+    require.Equal(t, pkt[1], packet.CreateTypeAndEncodingByte(packet.PacketClientAuth, packet.EncodingBytes))
+    require.Equal(t, bLen, uint16(16))
 }
