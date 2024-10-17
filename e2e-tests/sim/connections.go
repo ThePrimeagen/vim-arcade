@@ -2,18 +2,25 @@ package sim
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"math/rand"
 	"sync"
 
+	"vim-arcade.theprimeagen.com/pkg/api"
 	"vim-arcade.theprimeagen.com/pkg/assert"
-	"vim-arcade.theprimeagen.com/pkg/dummy"
 )
 
+var clientId = 0
+func getNextId() []byte {
+    id := []byte(fmt.Sprintf("%016x", clientId))
+    return id
+}
+
 type SimulationConnections struct {
-	clients []*dummy.DummyClient
-	adds    []*dummy.DummyClient
-	removes []*dummy.DummyClient
+	clients []*api.Client
+	adds    []*api.Client
+	removes []*api.Client
 	factory TestingClientFactory
 	m       sync.Mutex
 	rand    *rand.Rand
@@ -24,9 +31,9 @@ type SimulationConnections struct {
 func NewSimulationConnections(f TestingClientFactory, r *rand.Rand) SimulationConnections {
 	return SimulationConnections{
 		m:       sync.Mutex{},
-		clients: []*dummy.DummyClient{},
-		adds:    []*dummy.DummyClient{},
-		removes: []*dummy.DummyClient{},
+		clients: []*api.Client{},
+		adds:    []*api.Client{},
+		removes: []*api.Client{},
 		factory: f,
 		rand:    r,
 		logger:  slog.Default().With("area", "SimulationConnections"),
@@ -48,23 +55,23 @@ func (s *SimulationConnections) StartRound(adds int, removes int) {
 
 func (s *SimulationConnections) AssertAddsAndRemoves() {
 	for _, c := range s.adds {
-		assert.Assert(c.State == dummy.CSConnected, "state of connection is not connected", "state", dummy.ClientStateToString(c.State))
+		assert.Assert(c.State == api.CSConnected, "state of connection is not connected", "state", api.ClientStateToString(c.State))
 	}
 
 	for _, c := range s.removes {
-		assert.Assert(c.State == dummy.CSDisconnected, "state of connection is not disconnected", "state", dummy.ClientStateToString(c.State))
+		assert.Assert(c.State == api.CSDisconnected, "state of connection is not disconnected", "state", api.ClientStateToString(c.State))
 	}
 
 }
 
-func (s *SimulationConnections) FinishRound() ([]*dummy.DummyClient, []*dummy.DummyClient) {
+func (s *SimulationConnections) FinishRound() ([]*api.Client, []*api.Client) {
 	s.wait.Wait()
 
 	removes := s.removes
 	adds := s.adds
 
-	s.removes = []*dummy.DummyClient{}
-	s.adds = []*dummy.DummyClient{}
+	s.removes = []*api.Client{}
+	s.adds = []*api.Client{}
 
 	return adds, removes
 }
@@ -95,8 +102,8 @@ func (s *SimulationConnections) Add() int {
 }
 
 func (s *SimulationConnections) Remove(count int) {
-	removal := func(count int) []*dummy.DummyClient {
-		out := make([]*dummy.DummyClient, 0, count)
+	removal := func(count int) []*api.Client {
+		out := make([]*api.Client, 0, count)
 		s.m.Lock()
 		defer s.m.Unlock()
 
@@ -118,7 +125,7 @@ func (s *SimulationConnections) Remove(count int) {
 	for _, c := range removes {
 		c.Disconnect()
 		s.wait.Done()
-		s.logger.Warn("Disconnect Client", "addr", c.GameServerAddr())
+		s.logger.Warn("Disconnect Client", "addr", c.Addr())
 	}
 }
 
@@ -136,8 +143,8 @@ func NewTestingClientFactory(host string, port uint16, logger *slog.Logger) Test
 	}
 }
 
-func (f *TestingClientFactory) CreateBatchedConnectionsWithWait(count int, wait *sync.WaitGroup) []*dummy.DummyClient {
-	conns := make([]*dummy.DummyClient, 0)
+func (f *TestingClientFactory) CreateBatchedConnectionsWithWait(count int, wait *sync.WaitGroup) []*api.Client {
+	conns := make([]*api.Client, 0)
 
 	f.logger.Info("creating all clients", "count", count)
 	for range count {
@@ -148,7 +155,7 @@ func (f *TestingClientFactory) CreateBatchedConnectionsWithWait(count int, wait 
 	return conns
 }
 
-func (f *TestingClientFactory) CreateBatchedConnections(count int) []*dummy.DummyClient {
+func (f *TestingClientFactory) CreateBatchedConnections(count int) []*api.Client {
 	wait := &sync.WaitGroup{}
 	clients := f.CreateBatchedConnectionsWithWait(count, wait)
 
@@ -163,29 +170,31 @@ func (f TestingClientFactory) WithPort(port uint16) TestingClientFactory {
 	return f
 }
 
-func (f *TestingClientFactory) New() *dummy.DummyClient {
-	client := dummy.NewDummyClient(f.host, f.port)
-	f.logger.Info("factory connecting", "id", client.ConnId)
+func (f *TestingClientFactory) New() *api.Client {
+	client := api.NewClient(f.host, f.port, [16]byte(getNextId()))
+	f.logger.Info("factory connecting", "id", client.Id())
 	client.Connect(context.Background())
     client.WaitForReady()
-	f.logger.Info("factory connected", "id", client.ConnId)
+	f.logger.Info("factory connected", "id", client.Id())
 	return &client
 }
 
 // this is getting hacky...
-func (f *TestingClientFactory) NewWait(wait *sync.WaitGroup) *dummy.DummyClient {
-	client := dummy.NewDummyClient(f.host, f.port)
-	f.logger.Info("factory new client with wait", "id", client.ConnId)
+func (f *TestingClientFactory) NewWait(wait *sync.WaitGroup) *api.Client {
+	client := api.NewClient(f.host, f.port, [16]byte(getNextId()))
+
+    id := client.Id()
+	f.logger.Info("factory new client with wait", "id", id)
 
 	go func() {
 		defer func() {
-			f.logger.Info("factory client connected with wait", "id", client.ConnId)
+			f.logger.Info("factory client connected with wait", "id", id)
 			wait.Done()
 		}()
 
-		f.logger.Info("factory client connecting with wait", "id", client.ConnId)
+		f.logger.Info("factory client connecting with wait", "id", id)
         err := client.Connect(context.Background())
-        assert.NoError(err, "unable to connect to mm", "id", client.ConnId)
+        assert.NoError(err, "unable to connect to mm", "id", id)
 		client.WaitForReady()
 	}()
 

@@ -34,7 +34,7 @@ func AssertAllClientsSameServer(state *ServerState, clients []*api.Client) {
 
 func AssertClient(state *ServerState, client *api.Client) {
     slog.Info("assertClient", "client", client.String())
-    config, err := state.Sqlite.GetConfigByHostAndPort(client.GameServerHost, client.GameServerPort)
+    config, err := state.Sqlite.GetConfigByHostAndPort(client.Host, client.Port)
 
     assert.NoError(err, "unable to get config by host and port", "client", client)
     assert.NotNil(config, "expected a config to be present", "client", client)
@@ -72,15 +72,15 @@ func sumConfigConns(configs []gameserverstats.GameServerConfig) ConnectionValida
 
 func (c *ConnectionValidator) Add(conns []*api.Client) {
 	for _, conn := range conns {
-		fmt.Fprintf(os.Stderr, "ConnectionValidator#Add: %s\n", conn.GameServerAddr())
-		(*c)[conn.GameServerAddr()] += 1
+		fmt.Fprintf(os.Stderr, "ConnectionValidator#Add: %s\n", conn.Addr())
+		(*c)[conn.Addr()] += 1
 	}
 }
 
 func (c *ConnectionValidator) Remove(conns []*api.Client) {
 	for _, conn := range conns {
-		fmt.Fprintf(os.Stderr, "ConnectionValidator#Remove: %s\n", conn.GameServerAddr())
-		(*c)[conn.GameServerAddr()] -= 1
+		fmt.Fprintf(os.Stderr, "ConnectionValidator#Remove: %s\n", conn.Addr())
+		(*c)[conn.Addr()] -= 1
 	}
 }
 
@@ -119,12 +119,12 @@ func AssertServerState(before []gameserverstats.GameServerConfig, after []gamese
             slog.Error("server state before", "before", b.String(), "after", afterValidator.String())
             slog.Error("Adds", "count", len(adds))
             for i, c := range adds {
-                slog.Error("    client", "i", i, "addr", c.GameServerAddr())
+                slog.Error("    client", "i", i, "addr", c.Addr())
             }
 
             slog.Error("Removes", "count", len(removes))
             for i, c := range removes {
-                slog.Error("    client", "i", i, "addr", c.GameServerAddr())
+                slog.Error("    client", "i", i, "addr", c.Addr())
             }
 
             assert.Never("after vs before state + connections count mismatch", "failedOn", v, "currentState", afterValidator, "beforeState + connections added / removed", beforeValidator)

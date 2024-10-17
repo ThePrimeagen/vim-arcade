@@ -8,8 +8,8 @@ import (
 	"path"
 
 	amproxy "vim-arcade.theprimeagen.com/pkg/am-proxy"
+	"vim-arcade.theprimeagen.com/pkg/api"
 	"vim-arcade.theprimeagen.com/pkg/assert"
-	"vim-arcade.theprimeagen.com/pkg/dummy"
 	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
 	servermanagement "vim-arcade.theprimeagen.com/pkg/server-management"
 )
@@ -33,7 +33,7 @@ func createServer(ctx context.Context, server *ServerState, logger *slog.Logger)
     return sId, sConfig
 }
 
-type ConnMap map[string][]*dummy.DummyClient
+type ConnMap map[string][]*api.Client
 
 func hydrateServers(ctx context.Context, server *ServerState, logger *slog.Logger) (ConnMap, []ServerCreationConfig) {
     configs, err := server.Sqlite.GetAllGameServerConfigs()
@@ -109,7 +109,7 @@ func CreateEnvironment(ctx context.Context, path string, params servermanagement
     os.Setenv("SQLITE", path)
     os.Setenv("ENV", "TESTING")
 
-    port, err := dummy.GetFreePort()
+    port, err := api.GetFreePort()
     assert.NoError(err, "unable to get a free port")
 
     logger.Info("creating sqlite", "path", path)
