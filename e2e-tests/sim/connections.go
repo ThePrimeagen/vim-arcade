@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"log/slog"
 	"math/rand"
+	"slices"
 	"sync"
 
 	"vim-arcade.theprimeagen.com/pkg/api"
@@ -80,6 +81,7 @@ func (s *SimulationConnections) FinishRound() ([]*api.Client, []*api.Client) {
 }
 
 func (s *SimulationConnections) AddBatch(count int) int {
+    s.logger.Info("Adding connections", "count", count, "len", len(s.clients))
 	clients := s.factory.CreateBatchedConnectionsWithWait(count, &s.wait)
 
 	s.m.Lock()
@@ -105,31 +107,41 @@ func (s *SimulationConnections) Add() int {
 }
 
 func (s *SimulationConnections) Remove(count int) {
-	removal := func(count int) []*api.Client {
-		out := make([]*api.Client, 0, count)
-		s.m.Lock()
-		defer s.m.Unlock()
+    s.logger.Info("Removing", "count", count, "len", len(s.clients))
+    length := s.Len()
 
-        length := len(s.clients) - len(s.adds)
-		for range count {
-			idx := s.rand.Int() % length
-			out = append(out, s.clients[idx])
-			s.clients = append(s.clients[0:idx], s.clients[idx+1:]...)
-            length--
-		}
+    out := make([]int, 0, count)
 
-		return out
-	}
+    for range count {
+        // obviously this could be a perf nightmare, but i am going to
+        // assume its not too bad :)
+        for {
+            next := NextInt(s.rand, 0, length)
+            if slices.Contains(out, next) {
+                continue
+            }
+            out = append(out, next)
+            break
+        }
+    }
 
-	removes := removal(count)
-	s.removes = append(s.removes, removes...)
+    slices.Sort(out)
+    slices.Reverse(out)
 
-	assert.Assert(len(removes) == count, "we did not remove enough connections", "removes", len(removes), "count", count)
-	for _, c := range removes {
-		c.Disconnect()
+    removals := []*api.Client{}
+    for _, idx := range out {
+        s.logger.Warn("Disconnect Client", "serverId", s.clients[idx].ServerId, "addr", s.clients[idx].Addr(), "idx", idx)
+        s.clients[idx].Disconnect()
+        removals = append(removals, s.clients[idx])
+    }
+
+    s.m.Lock()
+    defer s.m.Unlock()
+    s.removes = append(s.removes, removals...)
+    for _, idx := range out {
+        s.clients = append(s.clients[:idx], s.clients[idx + 1:]...)
 		s.wait.Done()
-		s.logger.Warn("Disconnect Client", "addr", c.Addr())
-	}
+    }
 }
 
 type TestingClientFactory struct {
@@ -147,11 +159,11 @@ func NewTestingClientFactory(host string, port uint16, logger *slog.Logger) Test
 }
 
 func (f *TestingClientFactory) CreateBatchedConnectionsWithWait(count int, wait *sync.WaitGroup) []*api.Client {
-	conns := make([]*api.Client, 0)
+	conns := make([]*api.Client, count, count)
 
 	f.logger.Info("creating all clients", "count", count)
-	for range count {
-		conns = append(conns, f.NewWait(wait))
+    for i := range count {
+		conns[i] = f.NewWait(wait)
 	}
 	f.logger.Info("clients all created", "count", count)
 

@@ -3,11 +3,11 @@ module vim-arcade.theprimeagen.com
 go 1.23.0
 
 require (
+	github.com/gorilla/websocket v1.5.3
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.5.1
 	github.com/stretchr/testify v1.9.0
 	github.com/tursodatabase/go-libsql v0.0.0-20240916111504-922dfa87e1e6
-	golang.org/x/sync v0.6.0
 )
 
 require (
