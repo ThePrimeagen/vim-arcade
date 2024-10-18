@@ -83,7 +83,7 @@ type ConnectionValidator map[string]int
 func sumConfigConns(configs []gameserverstats.GameServerConfig) ConnectionValidator {
 	out := make(map[string]int)
 	for _, c := range configs {
-		out[c.Addr()] = c.Connections
+		out[c.Id] = c.Connections
 	}
 	return out
 }
@@ -91,14 +91,14 @@ func sumConfigConns(configs []gameserverstats.GameServerConfig) ConnectionValida
 func (c *ConnectionValidator) Add(conns []*api.Client) {
 	for _, conn := range conns {
 		fmt.Fprintf(os.Stderr, "ConnectionValidator#Add: %s\n", conn.Addr())
-		(*c)[conn.Addr()] += 1
+		(*c)[conn.ServerId] += 1
 	}
 }
 
 func (c *ConnectionValidator) Remove(conns []*api.Client) {
 	for _, conn := range conns {
 		fmt.Fprintf(os.Stderr, "ConnectionValidator#Remove: %s\n", conn.Addr())
-		(*c)[conn.Addr()] -= 1
+		(*c)[conn.ServerId] -= 1
 	}
 }
 

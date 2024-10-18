@@ -1,49 +1,19 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
+	"path"
 	"time"
 
 	"vim-arcade.theprimeagen.com/e2e-tests/sim"
 	"vim-arcade.theprimeagen.com/pkg/assert"
-	"vim-arcade.theprimeagen.com/pkg/ctrlc"
-	"vim-arcade.theprimeagen.com/pkg/dummy"
-	gameserverstats "vim-arcade.theprimeagen.com/pkg/game-server-stats"
-	"vim-arcade.theprimeagen.com/pkg/matchmaking"
 	prettylog "vim-arcade.theprimeagen.com/pkg/pretty-log"
 	servermanagement "vim-arcade.theprimeagen.com/pkg/server-management"
 )
-
-func createMatchMaking() (servermanagement.LocalServers, *gameserverstats.Sqlite, *matchmaking.MatchMakingServer) {
-    _, port := dummy.GetHostAndPort()
-
-    path := "/tmp/sim.db"
-    gameserverstats.ClearSQLiteFiles(path)
-
-    path = gameserverstats.EnsureSqliteURI(path)
-    db := gameserverstats.NewSqlite(path)
-    os.Setenv("SQLITE", path)
-    db.SetSqliteModes()
-    err := db.CreateGameServerConfigs()
-    assert.NoError(err, "unable to create game server configs")
-
-    configs, err := db.GetAllGameServerConfigs()
-    assert.NoError(err, "unable to get server configs")
-    assert.Assert(len(configs) == 0, "expected the server to be free on configs", "configs", configs)
-
-    local := servermanagement.NewLocalServers(db, servermanagement.ServerParams{
-        MaxLoad: 0.9,
-    })
-
-    return local, db, matchmaking.NewMatchMakingServer(matchmaking.MatchMakingServerParams{
-        Port: port,
-        GameServer: &local,
-    })
-}
 
 func main() {
     var inline bool
@@ -56,36 +26,51 @@ func main() {
     }
 
     logger := prettylog.CreateLoggerFromEnv(fh)
-
     slog.SetDefault(logger.With("process", "sim").With("area", "long-running"))
-    local, db, mm := createMatchMaking()
-    ctx, cancel := context.WithCancel(context.Background())
 
-    defer mm.Close()
-    go func() {
-        err := mm.Run(ctx)
-        if err != nil {
-            logger.Error("MatchMaking Run exited with an error", "err", err)
-        }
-        cancel()
-    }()
-    go db.Run(ctx)
-    go ctrlc.HandleCtrlC(cancel)
-    mm.WaitForReady(ctx)
+    ctx := sim.TopLevelContext()
+    sim.HandleCtrlC()
+
+    cwd, err := os.Getwd()
+    assert.NoError(err, "unable to get cwd")
+    p := path.Join(cwd, "e2e-tests/data/no_server")
+    state := sim.CreateEnvironment(ctx, p, servermanagement.ServerParams{
+        MaxLoad: 0.9,
+    })
+
+    defer state.Close()
+
     s := sim.NewSimulation(sim.SimulationParams{
         Seed: 69,
-        Rounds: 50000,
+        Rounds: 3600,
         Host: "",
-        Port: uint16(mm.Params.Port),
-        Stats: db,
-        StdConnections: 500,
-        MaxBatchConnectionChange: 25,
+        Port: uint16(state.Port),
+
+        ConnectionAdds: sim.Sin{
+            Amplitude: 4.0,
+            Period: 2 * math.Pi,
+            Offset: 0,
+        },
+
+        ConnectionRemoves: sim.Sin{
+            Amplitude: 4.0,
+            Period: 2 * math.Pi,
+            Offset: math.Pi,
+        },
+
+        ConnectionAddRem: sim.StatRange{
+            Std: 4,
+            Avg: 15,
+            Max: 30,
+        },
+
+        RoundsToPeriod: 360,
+
         TimeToConnectionCountMS: 5000,
-        ConnectionSleepMinMS: 50,
-        ConnectionSleepMaxMS: 75,
-    })
+
+    }, &state)
+
     go s.RunSimulation(ctx)
-    go local.Run(ctx)
 
     if !inline {
         fmt.Printf("[2J[1;1H\n")
@@ -105,8 +90,8 @@ func main() {
             fmt.Printf("[2J[1;1H\n")
         }
         fmt.Printf("%s\n", s.String())
-        fmt.Printf("%s\n", mm.String())
+        fmt.Printf("%s\n", state.String())
     }
 
-    cancel()
+    sim.CancelTopLevelContext()
 }

@@ -10,7 +10,6 @@ import (
 	"os"
 
 	"vim-arcade.theprimeagen.com/pkg/assert"
-	"vim-arcade.theprimeagen.com/pkg/dummy"
 	prettylog "vim-arcade.theprimeagen.com/pkg/pretty-log"
 )
 

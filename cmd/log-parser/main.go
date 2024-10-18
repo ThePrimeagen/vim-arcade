@@ -60,7 +60,20 @@ type IFilter interface {
 
 func NewFilter(line string) Filter {
     parts := strings.Split(line, ":")
-    assert.Assert(len(parts) == 3, "poorly formed filter", "filter", line)
+
+    if len(parts) == 1 {
+        return Filter{
+            process: parts[0],
+            area: "*",
+            msg: "*",
+        }
+    } else if len(parts) == 2 {
+        return Filter{
+            process: parts[0],
+            area: parts[1],
+            msg: "*",
+        }
+    }
 
     return Filter{
         process: parts[0],
